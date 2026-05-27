@@ -42,6 +42,8 @@ def test_setup_status_requires_token(retrobat_root: Path) -> None:
 
     assert client.get("/setup/status").status_code == 401
     assert client.get("/setup/status", headers={"X-Arcade-Token": "secret"}).status_code == 200
+    assert client.get("/setup/folders").status_code == 401
+    assert client.get("/setup/folders", headers={"X-Arcade-Token": "secret"}).status_code == 200
 
 
 def test_controls_get_endpoints_require_token(retrobat_root: Path) -> None:

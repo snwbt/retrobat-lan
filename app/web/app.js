@@ -12,6 +12,9 @@ const setupPort = document.querySelector("#setup-port");
 const setupAutoDetect = document.querySelector("#setup-auto-detect");
 const controlsStatusEl = document.querySelector("#controls-status");
 const controlDevicesEl = document.querySelector("#control-devices");
+const tokenStatusEl = document.querySelector("#token-status");
+const folderBrowserEl = document.querySelector("#folder-browser");
+let currentBrowsePath = "";
 
 const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 if (fragment.get("token")) {
@@ -20,7 +23,23 @@ if (fragment.get("token")) {
 }
 
 tokenInput.value = localStorage.getItem("arcadeToken") || "";
-tokenInput.addEventListener("input", () => localStorage.setItem("arcadeToken", tokenInput.value));
+updateTokenStatus();
+tokenInput.addEventListener("input", () => {
+  localStorage.setItem("arcadeToken", tokenInput.value);
+  updateTokenStatus();
+});
+
+function updateTokenStatus() {
+  tokenStatusEl.textContent = tokenInput.value
+    ? "Token loaded."
+    : "Open from RetroBatCabCommander.exe, or paste api_token from config.toml.";
+  setupStatusEl.textContent = tokenInput.value
+    ? setupStatusEl.textContent
+    : "Token required for setup. Open from RetroBatCabCommander.exe, or paste api_token from config.toml.";
+  controlsStatusEl.textContent = tokenInput.value
+    ? controlsStatusEl.textContent
+    : "Token required for controls setup.";
+}
 
 function headers() {
   return {
@@ -32,8 +51,16 @@ function headers() {
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (body.detail?.message) detail = `${body.detail.message} ${(body.detail.errors || []).join(" ")}`;
+      else detail = JSON.stringify(body.detail || body);
+    } catch {
+      detail = await response.text();
+    }
+    throw new Error(`HTTP ${response.status}: ${detail || response.statusText}`);
   }
   return response.json();
 }
@@ -69,9 +96,22 @@ async function loadStatus() {
 }
 
 async function loadSetupStatus() {
-  if (!tokenInput.value) return;
+  if (!tokenInput.value) {
+    updateTokenStatus();
+    return;
+  }
   const setup = await api("/setup/status", { headers: headers() });
-  setupStatusEl.textContent = `${setup.retrobat_root_valid ? "RetroBat found" : "RetroBat not found"} - ${setup.resolved_retrobat_root} - startup ${setup.startup_enabled ? "enabled" : "disabled"}`;
+  const diagnostics = [
+    `RetroBat ${setup.retrobat_root_valid ? "found" : "not found"}`,
+    setup.resolved_retrobat_root,
+    `retrobat.exe ${setup.retrobat_exe_exists ? "yes" : "no"}`,
+    `roms ${setup.roms_root_exists ? "yes" : "no"}`,
+    `systems ${setup.indexed_system_count}`,
+    `games ${setup.indexed_game_count}`,
+    `startup ${setup.startup_enabled ? "enabled" : "disabled"}`,
+  ];
+  if (setup.no_games_reason) diagnostics.push(setup.no_games_reason);
+  setupStatusEl.textContent = diagnostics.join(" - ");
   setupRetroBatRoot.value = setup.configured_retrobat_root || "";
   setupBindHost.value = setup.bind_host;
   setupPort.value = setup.port;
@@ -79,7 +119,10 @@ async function loadSetupStatus() {
 }
 
 async function loadControlsStatus() {
-  if (!tokenInput.value) return;
+  if (!tokenInput.value) {
+    updateTokenStatus();
+    return;
+  }
   const controls = await api("/controls/status", { headers: headers() });
   const assigned = controls.assignments
     .filter((item) => item.usb_location_path)
@@ -87,6 +130,43 @@ async function loadControlsStatus() {
     .join(" - ");
   controlsStatusEl.textContent = `${controls.enabled ? "Enabled" : "Disabled"} - ${assigned || "No ports assigned"} - RetroArch config ${controls.retroarch_config_exists ? "found" : "not found yet"}`;
   renderControlDevices(controls.devices);
+}
+
+function describeFolder(folder) {
+  const flags = [];
+  if (folder.retrobat_exe) flags.push("retrobat.exe");
+  if (folder.roms_root) flags.push("roms");
+  if (folder.es_systems_cfg) flags.push("es_systems.cfg");
+  if (folder.valid_retrobat_root) flags.push("RetroBat candidate");
+  return flags.join(" - ");
+}
+
+async function loadFolderBrowser(path = "") {
+  if (!tokenInput.value) {
+    updateTokenStatus();
+    return;
+  }
+  const query = path ? `?path=${encodeURIComponent(path)}` : "";
+  const data = await api(`/setup/folders${query}`, { headers: headers() });
+  currentBrowsePath = data.current_path || "";
+  folderBrowserEl.innerHTML = "";
+  if (data.error) {
+    const error = document.createElement("div");
+    error.className = "row";
+    error.textContent = data.error;
+    folderBrowserEl.appendChild(error);
+  }
+  const entries = [];
+  if (data.parent_path) entries.push({ name: "..", path: data.parent_path, meta: "Parent folder" });
+  for (const drive of data.drives) entries.push({ ...drive, meta: describeFolder(drive) || "Drive" });
+  for (const directory of data.directories) entries.push({ ...directory, meta: describeFolder(directory) || "Folder" });
+  for (const entry of entries) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.textContent = `${entry.name} ${entry.meta ? "- " + entry.meta : ""}`;
+    row.addEventListener("click", () => loadFolderBrowser(entry.path));
+    folderBrowserEl.appendChild(row);
+  }
 }
 
 function renderControlDevices(devices) {
@@ -127,6 +207,10 @@ async function assignControl(player, locationPath) {
 async function loadSystems() {
   const systems = await api("/systems");
   systemsEl.innerHTML = "";
+  if (!systems.length) {
+    systemsEl.innerHTML = '<div class="row"><span class="row-meta">No systems indexed yet. Use Setup to choose the RetroBat folder, then save/rescan.</span></div>';
+    return;
+  }
   for (const system of systems) {
     const row = document.createElement("button");
     row.type = "button";
@@ -199,7 +283,20 @@ document.querySelector("#save-setup").addEventListener("click", async () => {
   await loadStatus();
   await loadSetupStatus();
   await loadSystems();
-  alert("Setup saved. Restart the app if you changed bind host or port.");
+  alert("Setup saved and games rescanned. Restart the app if you changed bind host or port.");
+});
+
+document.querySelector("#browse-folders").addEventListener("click", async () => {
+  await loadFolderBrowser(setupRetroBatRoot.value);
+});
+
+document.querySelector("#use-folder").addEventListener("click", () => {
+  if (!currentBrowsePath) {
+    alert("Choose a folder first.");
+    return;
+  }
+  setupRetroBatRoot.value = currentBrowsePath;
+  setupAutoDetect.checked = false;
 });
 
 document.querySelector("#enable-startup").addEventListener("click", async () => {
@@ -230,6 +327,6 @@ document.querySelector("#repair-controls").addEventListener("click", async () =>
 });
 
 loadStatus().catch((error) => (statusEl.textContent = error.message));
-loadSystems().catch((error) => (systemsEl.textContent = error.message));
+loadSystems().catch((error) => (systemsEl.innerHTML = `<div class="row"><span class="row-meta">${error.message}</span></div>`));
 loadSetupStatus().catch((error) => (setupStatusEl.textContent = error.message));
 loadControlsStatus().catch((error) => (controlsStatusEl.textContent = error.message));

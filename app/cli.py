@@ -18,7 +18,7 @@ def app_base_dir() -> Path:
 
 
 def dashboard_url(port: int, token: str) -> str:
-    return f"http://127.0.0.1:{port}/#token={token}"
+    return f"http://127.0.0.1:{port}/setup/bootstrap?token={token}"
 
 
 def open_dashboard_later(port: int, token: str) -> None:
@@ -38,4 +38,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

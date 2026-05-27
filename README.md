@@ -20,11 +20,14 @@ The easiest install is the portable exe release:
 
 1. Extract `RetroBatCabCommander-v0.1.1-win64.zip` to `C:\RetroBatCabCommander`.
 2. Double-click `RetroBatCabCommander.exe`.
-3. The dashboard opens automatically.
-4. If RetroBat is not detected, use the dashboard setup panel to set the RetroBat folder.
-5. Click `Start with Windows` in the dashboard.
+3. The dashboard opens automatically and stores the generated token in the browser.
+4. If RetroBat is not detected, use `Browse folders` in the dashboard setup panel and choose the folder that contains `retrobat.exe` or `roms`.
+5. Click `Save setup`; the app rescans systems and games immediately.
+6. Click `Start with Windows` in the dashboard.
 
 The arcade PC does not need Python, pip, PowerShell, CMD, or startup scripts.
+
+If you opened the dashboard manually and the token field is empty, open `config.toml` beside the exe and paste the `api_token` value into the dashboard token field.
 
 ## Source Setup
 

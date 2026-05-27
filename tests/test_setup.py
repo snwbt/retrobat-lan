@@ -50,6 +50,20 @@ def test_generated_token_not_returned_by_public_endpoints(tmp_path: Path) -> Non
     assert token not in client.get("/config/public").text
 
 
+def test_bootstrap_page_can_store_token_without_public_leak(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _, token, _ = ensure_config_file(config_path)
+    config = load_config(config_path)
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    bootstrap = client.get(f"/setup/bootstrap?token={token}")
+
+    assert bootstrap.status_code == 200
+    assert "localStorage.setItem" in bootstrap.text
+    assert token not in client.get("/status").text
+    assert token not in client.get("/config/public").text
+
+
 def test_setup_config_saves_only_allowed_fields(tmp_path: Path) -> None:
     retrobat = tmp_path / "RetroBat"
     (retrobat / "roms").mkdir(parents=True)
@@ -82,6 +96,54 @@ def test_setup_config_saves_only_allowed_fields(tmp_path: Path) -> None:
     assert "api_token = \"secret\"" in saved
     assert "attacker" not in saved
     assert "port = 9001" in saved
+
+
+def test_setup_config_rescans_selected_retrobat_root(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms" / "arcade").mkdir(parents=True)
+    (retrobat / "roms" / "arcade" / "pacman.zip").write_text("rom", encoding="utf-8")
+    config = AppConfig(api_token="secret", config_path=tmp_path / "config.toml", log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.post(
+        "/setup/config",
+        headers={"X-Arcade-Token": "secret"},
+        json={"retrobat_root": str(retrobat), "auto_detect_retrobat": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["indexed_game_count"] == 1
+    assert response.json()["indexed_system_count"] == 1
+
+
+def test_folder_browser_lists_directories_only(tmp_path: Path) -> None:
+    root = tmp_path / "browse"
+    (root / "RetroBat" / "roms").mkdir(parents=True)
+    (root / "file.txt").write_text("ignore", encoding="utf-8")
+    config = AppConfig(api_token="secret", config_path=tmp_path / "config.toml", log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.get("/setup/folders", headers={"X-Arcade-Token": "secret"}, params={"path": str(root)})
+
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()["directories"]]
+    assert names == ["RetroBat"]
+    assert response.json()["directories"][0]["valid_retrobat_root"] is True
+
+
+def test_folder_browser_handles_missing_path(tmp_path: Path) -> None:
+    config = AppConfig(api_token="secret", config_path=tmp_path / "config.toml", log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.get(
+        "/setup/folders",
+        headers={"X-Arcade-Token": "secret"},
+        params={"path": str(tmp_path / "missing")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["directories"] == []
+    assert response.json()["error"]
 
 
 def test_setup_config_rejects_invalid_path_when_auto_detect_disabled(tmp_path: Path) -> None:
@@ -125,4 +187,3 @@ def test_startup_enable_disable_uses_manager(tmp_path: Path) -> None:
     assert disabled.json()["enabled"] is False
     assert manager.enable_calls == 1
     assert manager.disable_calls == 1
-

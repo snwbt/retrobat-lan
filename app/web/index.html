@@ -16,6 +16,7 @@
         <label class="token">
           Token
           <input id="token" type="password" autocomplete="off" />
+          <span id="token-status" class="row-meta">Checking token...</span>
         </label>
       </header>
 
@@ -52,10 +53,13 @@
           </label>
         </div>
         <div class="setup-actions">
+          <button id="browse-folders" type="button">Browse folders</button>
+          <button id="use-folder" type="button">Use this folder</button>
           <button id="save-setup" type="button">Save setup</button>
           <button id="enable-startup" type="button">Start with Windows</button>
           <button id="disable-startup" type="button">Disable Start with Windows</button>
         </div>
+        <div id="folder-browser" class="list"></div>
       </section>
 
       <section class="setup">

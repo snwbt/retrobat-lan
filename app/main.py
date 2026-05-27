@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import token_dependency
@@ -19,6 +20,8 @@ from .models import (
     ControlsRepairResponse,
     ControlsStatusResponse,
     ControlsVerifyResponse,
+    FolderBrowserResponse,
+    FolderCandidate,
     LaunchRequest,
     LaunchResult,
     PowerResult,
@@ -31,6 +34,7 @@ from .models import (
     SystemInfo,
 )
 from .scanner import GameIndex
+from .setup_browser import browse_folders, folder_indicators
 from .startup import StartupManager, WindowsRegistryStartupManager
 from .system_control import reboot as request_reboot
 from .system_control import shutdown as request_shutdown
@@ -45,6 +49,25 @@ def _normalize_setup_path(value: str | None, base_dir: Path) -> Path | None:
     if not path.is_absolute():
         path = base_dir / path
     return path
+
+
+def _no_games_reason(config: AppConfig, index: GameIndex) -> str | None:
+    if len(index.games) > 0:
+        return None
+    if not config.retrobat_root_valid:
+        return "RetroBat root is not valid. Choose the folder that contains retrobat.exe or roms."
+    if not config.roms_root.exists():
+        return "The selected RetroBat folder does not contain a roms folder."
+    if index.es_systems_cfg_path and not index.systems:
+        return "es_systems.cfg was found, but it did not contain any systems."
+    if not index.systems:
+        return "No systems were indexed. Check es_systems.cfg or the roms folder."
+    return "Systems were indexed, but no matching ROM files were found."
+
+
+def _folder_candidate(path: Path) -> FolderCandidate:
+    indicators = folder_indicators(path)
+    return FolderCandidate(path=str(path), name=path.name or str(path), **indicators)
 
 
 def create_app(
@@ -72,6 +95,19 @@ def create_app(
         )
 
     require_token = token_dependency(app_config)
+
+    @app.get("/setup/bootstrap", response_class=HTMLResponse)
+    def setup_bootstrap_endpoint(token: str) -> str:
+        escaped = token.replace("\\", "\\\\").replace("'", "\\'")
+        return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>RetroBat Cab Commander</title></head>
+<body>
+<script>
+localStorage.setItem('arcadeToken', '{escaped}');
+window.location.replace('/');
+</script>
+Token saved. Redirecting to dashboard...
+</body></html>"""
 
     @app.get("/status", response_model=StatusResponse)
     def status_endpoint() -> StatusResponse:
@@ -134,6 +170,23 @@ def create_app(
             port=app_config.port,
             startup_enabled=startup.is_enabled(),
             config_path=str(app_config.config_path) if app_config.config_path else None,
+            retrobat_exe_exists=app_config.retrobat_exe.exists(),
+            roms_root_exists=app_config.roms_root.exists(),
+            es_systems_cfg_path=str(index.es_systems_cfg_path) if index.es_systems_cfg_path else None,
+            indexed_system_count=len(index.systems),
+            indexed_game_count=len(index.games),
+            no_games_reason=_no_games_reason(app_config, index),
+        )
+
+    @app.get("/setup/folders", response_model=FolderBrowserResponse, dependencies=[Depends(require_token)])
+    def setup_folders_endpoint(path: str | None = None) -> FolderBrowserResponse:
+        current, parent, drives, directories, error = browse_folders(path)
+        return FolderBrowserResponse(
+            current_path=str(current) if current else None,
+            parent_path=parent,
+            drives=[_folder_candidate(drive) for drive in drives],
+            directories=[_folder_candidate(directory) for directory in directories],
+            error=error,
         )
 
     @app.post("/setup/config", response_model=SetupStatusResponse, dependencies=[Depends(require_token)])

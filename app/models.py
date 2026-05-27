@@ -87,6 +87,12 @@ class SetupStatusResponse(BaseModel):
     port: int
     startup_enabled: bool
     config_path: Optional[str] = None
+    retrobat_exe_exists: bool = False
+    roms_root_exists: bool = False
+    es_systems_cfg_path: Optional[str] = None
+    indexed_system_count: int = 0
+    indexed_game_count: int = 0
+    no_games_reason: Optional[str] = None
 
 
 class SetupConfigRequest(BaseModel):
@@ -94,6 +100,23 @@ class SetupConfigRequest(BaseModel):
     auto_detect_retrobat: Optional[bool] = None
     bind_host: Optional[str] = None
     port: Optional[int] = None
+
+
+class FolderCandidate(BaseModel):
+    path: str
+    name: str
+    retrobat_exe: bool = False
+    roms_root: bool = False
+    es_systems_cfg: bool = False
+    valid_retrobat_root: bool = False
+
+
+class FolderBrowserResponse(BaseModel):
+    current_path: Optional[str] = None
+    parent_path: Optional[str] = None
+    drives: list[FolderCandidate] = Field(default_factory=list)
+    directories: list[FolderCandidate] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class StartupResult(BaseModel):
