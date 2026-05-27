@@ -60,7 +60,7 @@ def create_app(
     startup = startup_manager or WindowsRegistryStartupManager()
     controls = ControlsService(app_config, controls_provider)
 
-    app = FastAPI(title="RetroBat Cab Commander", version="0.1.0")
+    app = FastAPI(title="RetroBat Cab Commander", version="0.1.1")
 
     if app_config.cors_enabled:
         app.add_middleware(

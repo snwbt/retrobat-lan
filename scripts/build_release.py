@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = PROJECT_ROOT / "dist"
 BUILD_DIR = PROJECT_ROOT / "build"
 APP_NAME = "RetroBatCabCommander"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 def run(command: list[str]) -> None:
