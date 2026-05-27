@@ -21,8 +21,25 @@ cors_enabled = false
 cors_origins = []
 log_dir = "logs"
 
+safe_power_wait_seconds = 10
+allow_force_kill_emulators = false
+
+marquee_enabled = false
+marquee_refresh_seconds = 5
+marquee_artwork_preference = ["marquee", "wheel", "boxart", "screenshot"]
+
 controls_enabled = true
 controls_auto_repair_on_launch = true
+
+[launch_rules.windows]
+mode = "shell"
+
+[launch_rules.arcade]
+mode = "retrobat"
+
+# Unsupported MVP modes such as steam_uri will be reported as warnings and blocked.
+# [launch_rules.steam]
+# mode = "disabled"
 
 [controller_ports.player1]
 label = "Player 1"

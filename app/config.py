@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import secrets
+import shutil
 import sys
 import tomllib
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +18,7 @@ DEFAULT_RETROBAT_ROOT = Path("C:/RetroBat")
 DEFAULT_API_TOKEN = "change-this-token"
 LEGACY_DEFAULT_API_TOKEN = "change-me"
 RETROBAT_ROOT_SOURCES = {"config", "env", "exe-neighbor", "common-path", "drive-scan", "default"}
+CONFIG_BACKUP_KEEP = 5
 
 
 class RetroBatRootResolution(BaseModel):
@@ -28,6 +31,10 @@ class RetroBatRootResolution(BaseModel):
 class ControllerPortConfig(BaseModel):
     label: str = ""
     usb_location_path: str = ""
+
+
+class LaunchRuleConfig(BaseModel):
+    mode: str
 
 
 class AppConfig(BaseModel):
@@ -49,8 +56,14 @@ class AppConfig(BaseModel):
     cors_enabled: bool = False
     cors_origins: list[str] = Field(default_factory=list)
     log_dir: Path = Path("logs")
+    safe_power_wait_seconds: int = 10
+    allow_force_kill_emulators: bool = False
+    marquee_enabled: bool = False
+    marquee_refresh_seconds: int = 5
+    marquee_artwork_preference: list[str] = Field(default_factory=lambda: ["marquee", "wheel", "boxart", "screenshot"])
     controls_enabled: bool = True
     controls_auto_repair_on_launch: bool = True
+    launch_rules: dict[str, LaunchRuleConfig] = Field(default_factory=dict)
     controller_ports: dict[str, ControllerPortConfig] = Field(
         default_factory=lambda: {
             "player1": ControllerPortConfig(label="Player 1"),
@@ -226,8 +239,14 @@ def default_config_data(api_token: str | None = None) -> dict[str, Any]:
         "cors_enabled": False,
         "cors_origins": [],
         "log_dir": "logs",
+        "safe_power_wait_seconds": 10,
+        "allow_force_kill_emulators": False,
+        "marquee_enabled": False,
+        "marquee_refresh_seconds": 5,
+        "marquee_artwork_preference": ["marquee", "wheel", "boxart", "screenshot"],
         "controls_enabled": True,
         "controls_auto_repair_on_launch": True,
+        "launch_rules": {},
         "controller_ports": {
             "player1": {"label": "Player 1", "usb_location_path": ""},
             "player2": {"label": "Player 2", "usb_location_path": ""},
@@ -272,6 +291,11 @@ def write_config_data(path: Path, data: dict[str, Any]) -> None:
         "cors_enabled",
         "cors_origins",
         "log_dir",
+        "safe_power_wait_seconds",
+        "allow_force_kill_emulators",
+        "marquee_enabled",
+        "marquee_refresh_seconds",
+        "marquee_artwork_preference",
         "controls_enabled",
         "controls_auto_repair_on_launch",
     ]
@@ -284,6 +308,23 @@ def write_config_data(path: Path, data: dict[str, Any]) -> None:
         if key in data and data[key] is not None:
             lines.append(f"{key} = {_toml_value(data[key])}")
     controller_ports = data.get("controller_ports")
+    launch_rules = data.get("launch_rules")
+    if isinstance(launch_rules, dict):
+        for system, rule in sorted(launch_rules.items()):
+            if isinstance(rule, LaunchRuleConfig):
+                rule_data = rule.model_dump()
+            else:
+                rule_data = dict(rule)
+            mode = rule_data.get("mode")
+            if mode is None:
+                continue
+            lines.extend(
+                [
+                    "",
+                    f"[launch_rules.{system}]",
+                    f"mode = {_toml_value(str(mode))}",
+                ]
+            )
     if isinstance(controller_ports, dict):
         for player in ["player1", "player2"]:
             port = controller_ports.get(player)
@@ -303,6 +344,35 @@ def write_config_data(path: Path, data: dict[str, Any]) -> None:
             )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def config_backup_paths(path: Path) -> list[Path]:
+    backups = list(path.parent.glob(f"{path.name}.*.bak"))
+    return sorted(backups, key=lambda item: (item.stat().st_mtime, item.name), reverse=True)
+
+
+def latest_config_backup(path: Path) -> Path | None:
+    backups = config_backup_paths(path)
+    return backups[0] if backups else None
+
+
+def create_config_backup(path: Path, keep: int = CONFIG_BACKUP_KEEP) -> Path | None:
+    if not path.exists():
+        return None
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backup = path.with_name(f"{path.name}.{timestamp}.bak")
+    shutil.copy2(path, backup)
+    for old_backup in config_backup_paths(path)[keep:]:
+        old_backup.unlink(missing_ok=True)
+    return backup
+
+
+def revert_latest_config_backup(path: Path) -> Path:
+    backup = latest_config_backup(path)
+    if backup is None:
+        raise FileNotFoundError("No configuration backup is available.")
+    shutil.copy2(backup, path)
+    return backup
 
 
 def ensure_config_file(config_path: str | Path | None = None) -> tuple[Path, str, bool]:
@@ -336,6 +406,18 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         raw["es_systems_cfg"] = _normalize_path(raw["es_systems_cfg"], base_dir)
     if "log_dir" in raw:
         raw["log_dir"] = _normalize_path(raw["log_dir"], base_dir)
+    if isinstance(raw.get("marquee_artwork_preference"), str):
+        raw["marquee_artwork_preference"] = [
+            item.strip()
+            for item in raw["marquee_artwork_preference"].replace(",", " ").split()
+            if item.strip()
+        ]
+    if isinstance(raw.get("launch_rules"), dict):
+        raw["launch_rules"] = {
+            str(system).strip().lower(): value
+            for system, value in raw["launch_rules"].items()
+            if str(system).strip()
+        }
 
     auto_detect = bool(raw.get("auto_detect_retrobat", True))
     resolution = resolve_retrobat_root(configured_root, auto_detect)
@@ -365,7 +447,13 @@ def config_to_writable_data(config: AppConfig) -> dict[str, Any]:
         "cors_enabled": config.cors_enabled,
         "cors_origins": config.cors_origins,
         "log_dir": config.log_dir,
+        "safe_power_wait_seconds": config.safe_power_wait_seconds,
+        "allow_force_kill_emulators": config.allow_force_kill_emulators,
+        "marquee_enabled": config.marquee_enabled,
+        "marquee_refresh_seconds": config.marquee_refresh_seconds,
+        "marquee_artwork_preference": config.marquee_artwork_preference,
         "controls_enabled": config.controls_enabled,
         "controls_auto_repair_on_launch": config.controls_auto_repair_on_launch,
+        "launch_rules": config.launch_rules,
         "controller_ports": config.controller_ports,
     }

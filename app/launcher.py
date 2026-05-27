@@ -7,9 +7,10 @@ from pathlib import Path
 from fastapi import HTTPException, status
 
 from .config import AppConfig
+from .launch_rules import SUPPORTED_LAUNCH_MODES, effective_launch_mode
 from .logging_config import get_logger
 from .models import Game, LaunchRequest, LaunchResult
-from .scanner import WINDOWS_LAUNCH_EXTENSIONS, WINDOWS_NATIVE_SYSTEMS, GameIndex
+from .scanner import WINDOWS_LAUNCH_EXTENSIONS, GameIndex
 
 logger = get_logger("launcher")
 
@@ -44,6 +45,8 @@ class WindowsNativeLaunchStrategy(LaunchStrategy):
     def launch(self, request: LaunchRequest, game: Game | None) -> LaunchResult:
         if game is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found.")
+        if not Path(game.path).exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Launch target does not exist.")
         extension = Path(game.path).suffix.lower()
         if extension not in WINDOWS_LAUNCH_EXTENSIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported launcher extension.")
@@ -99,19 +102,52 @@ class RetroBatLaunchStrategy(LaunchStrategy):
         )
 
 
+class DisabledLaunchStrategy(LaunchStrategy):
+    name = "disabled"
+
+    def launch(self, request: LaunchRequest, game: Game | None) -> LaunchResult:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Launches are disabled for this system.")
+
+
+class DryRunOnlyLaunchStrategy(LaunchStrategy):
+    name = "dry-run-only"
+
+    def launch(self, request: LaunchRequest, game: Game | None) -> LaunchResult:
+        if not request.dry_run:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This system only allows dry-run launch tests.")
+        return LaunchResult(
+            launched=False,
+            dry_run=True,
+            strategy=self.name,
+            message="Dry run accepted. This system is configured for dry-run launch tests only.",
+            game=game,
+        )
+
+
 class Launcher:
     def __init__(self, config: AppConfig, index: GameIndex):
         self.config = config
         self.index = index
         self.windows_strategy = WindowsNativeLaunchStrategy(config)
         self.retrobat_strategy = RetroBatLaunchStrategy(config)
+        self.disabled_strategy = DisabledLaunchStrategy()
+        self.dry_run_only_strategy = DryRunOnlyLaunchStrategy()
 
     def launch(self, request: LaunchRequest) -> LaunchResult:
         game = self.index.find_game(request.system, request.path)
         if request.path and game is None:
             logger.warning("launch_rejected_missing_or_unsafe system=%s", request.system)
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found or path is not indexed.")
-        if request.system.lower() in WINDOWS_NATIVE_SYSTEMS:
+        if game is not None and not Path(game.path).exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Launch target does not exist.")
+        mode = effective_launch_mode(self.config, request.system)
+        if mode not in SUPPORTED_LAUNCH_MODES:
+            logger.warning("launch_rejected_unknown_mode system=%s mode=%s", request.system, mode)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown launch mode '{mode}' configured.")
+        if mode == "disabled":
+            return self.disabled_strategy.launch(request, game)
+        if mode == "dry_run_only":
+            return self.dry_run_only_strategy.launch(request, game)
+        if mode == "shell":
             return self.windows_strategy.launch(request, game)
         return self.retrobat_strategy.launch(request, game)
-

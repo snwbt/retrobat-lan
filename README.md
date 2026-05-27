@@ -18,11 +18,11 @@ The API never returns the configured token. Shutdown and reboot are POST-only an
 
 The easiest install is the portable exe release:
 
-1. Extract `RetroBatCabCommander-v0.1.2-win64.zip` to `C:\RetroBatCabCommander`.
+1. Extract `RetroBatCabCommander-v0.1.6-win64.zip` to `C:\RetroBatCabCommander`.
 2. Double-click `RetroBatCabCommander.exe`.
 3. The dashboard opens automatically and stores the generated token in the browser.
 4. If RetroBat is not detected, use `Browse folders` in the dashboard setup panel and choose the folder that contains `retrobat.exe` or `roms`.
-5. Click `Save setup`; the app rescans systems and games immediately.
+5. Click `Validate configuration`, then `Save configuration`; the app creates a backup and rescans systems and games immediately.
 6. Click `Start with Windows` in the dashboard.
 
 The arcade PC does not need Python, pip, PowerShell, CMD, or startup scripts.
@@ -68,6 +68,11 @@ emulator_process_names = ["retroarch.exe"]
 
 allow_rom_symlinks = true
 experimental_direct_es_launch = false
+safe_power_wait_seconds = 10
+allow_force_kill_emulators = false
+marquee_enabled = false
+marquee_refresh_seconds = 5
+marquee_artwork_preference = ["marquee", "wheel", "boxart", "screenshot"]
 cors_enabled = false
 cors_origins = []
 ```
@@ -80,6 +85,8 @@ To force an exact path and disable fallback:
 auto_detect_retrobat = false
 retrobat_root = "D:/Arcade/RetroBat"
 ```
+
+Dashboard setup changes are staged. Editing the RetroBat folder, bind host, port, control-lock toggles, or Player 1/Player 2 USB port assignments does not write `config.toml` until `Save configuration` is clicked. Each save creates a timestamped `config.toml.*.bak` backup beside the config file and keeps the newest five backups. `Revert changes` restores the most recent saved backup. Use `Download config backup` in Diagnostics to download a redacted backup for troubleshooting.
 
 Optional `es_systems_cfg` can point to a specific file. If omitted, discovery checks:
 
@@ -110,6 +117,7 @@ For v1, `.game` files are treated as launcher descriptors and may be opened by t
 
 ```powershell
 curl http://127.0.0.1:8765/status
+curl http://127.0.0.1:8765/now-playing
 curl http://127.0.0.1:8765/systems
 curl "http://127.0.0.1:8765/search?q=mario"
 ```
@@ -130,11 +138,65 @@ curl -X POST http://127.0.0.1:8765/launch `
   -d "{\"system\":\"windows\",\"path\":\"C:/RetroBat/roms/windows/My Game.lnk\",\"dry_run\":true}"
 ```
 
+## Now Playing
+
+The dashboard shows a Now Playing card with the current game, system, elapsed time, detected process, and confidence level. App-launched games are saved to `now-playing.json` beside `config.toml`, or under the logs folder when no config path is available.
+
+When optional `psutil` is installed, `/now-playing` also checks configured RetroBat/front-end/emulator process names. Process-only detection is low confidence because the MVP does not parse RetroArch command lines or EmulationStation logs. Use `Clear` in the dashboard, or `POST /now-playing/clear`, to end the saved session; this does not kill any emulator process.
+
+## Safe Power
+
+Use the dashboard Power Status panel or kiosk Power menu for safer cabinet power actions. The safe endpoints check configured emulator processes before shutdown or reboot:
+
+```text
+GET /power/status
+POST /power/quit-current-game
+POST /power/shutdown-safe
+POST /power/reboot-safe
+```
+
+`shutdown-safe` and `reboot-safe` try to gracefully close emulator processes, wait up to `safe_power_wait_seconds`, and block if emulators remain running. `allow_force_kill_emulators` defaults to `false`; only enable it if you accept force-killing emulator processes. Front-end processes such as RetroBat and EmulationStation are not closed by this feature.
+
+## Kiosk Dashboard
+
+Open the cabinet-friendly dashboard at:
+
+```text
+http://127.0.0.1:8765/kiosk
+```
+
+Kiosk mode uses large focusable controls for 720p and 1080p displays. Navigate with arrow keys or D-pad, activate with Enter/A, and go back with Escape/B. The browser Gamepad API is used when available, but keyboard navigation works without it. Tokens entered in kiosk mode are stored in `sessionStorage`; existing dashboard tokens can be read for convenience, but kiosk does not write new tokens to `localStorage`.
+
+## Dynamic Marquee
+
+Open the browser-based marquee display at:
+
+```text
+http://127.0.0.1:8765/marquee
+```
+
+The marquee is disabled by default. Set `marquee_enabled = true` in `config.toml` to show the current or last launched game. It uses only local RetroBat/EmulationStation media from `gamelist.xml`, system `media` folders, or `downloaded_media`; it does not scrape or download artwork.
+
 ## Launch Behavior
 
-Windows-native systems launch validated files through the Windows shell.
+Windows-native systems launch validated files through the Windows shell by default.
 
 Emulator systems use a placeholder `RetroBatLaunchStrategy`: it starts `retrobat.exe` if available and not already running, logs the selected ROM, and returns selected game metadata. It does not execute `es_systems.cfg` command templates in the MVP.
+
+Per-system launch rules can override the default strategy:
+
+```toml
+[launch_rules.windows]
+mode = "shell"
+
+[launch_rules.arcade]
+mode = "retrobat"
+
+[launch_rules.steam]
+mode = "disabled"
+```
+
+Supported MVP modes are `shell`, `retrobat`, `disabled`, and `dry_run_only`. `shell` only opens indexed, validated files with approved launcher extensions inside allowed ROM locations. Unknown modes such as `steam_uri` are reported as warnings and blocked until a safe strategy is implemented.
 
 `experimental_direct_es_launch` defaults to `false`; direct command-template launch is backlog work and must include command substitution tests before use.
 
@@ -148,8 +210,9 @@ In the dashboard:
 2. Click `Detect connected controls`.
 3. Assign the left/P1 encoder USB port as Player 1.
 4. Assign the right/P2 encoder USB port as Player 2.
-5. Click `Verify player order`.
-6. Click `Repair RetroArch mapping`.
+5. Click `Save configuration`.
+6. Click `Verify player order`.
+7. Click `Repair RetroArch mapping`.
 
 The app writes only these RetroArch keys:
 
@@ -200,7 +263,7 @@ The output is written to:
 
 ```text
 dist\RetroBatCabCommander
-dist\RetroBatCabCommander-v0.1.2-win64.zip
+dist\RetroBatCabCommander-v0.1.6-win64.zip
 ```
 
 ## Backlog

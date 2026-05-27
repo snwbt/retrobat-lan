@@ -34,9 +34,10 @@ def device(name: str, path: str, index: int | None, source: str = "verified") ->
     )
 
 
-def test_assign_uses_usb_location_path_not_device_name(retrobat_root: Path, tmp_path: Path) -> None:
+def test_assign_uses_usb_location_path_not_device_name_without_saving(retrobat_root: Path, tmp_path: Path) -> None:
     config = make_config(retrobat_root)
     config.config_path = tmp_path / "config.toml"
+    config.config_path.write_text('api_token = "secret"\n', encoding="utf-8")
     provider = FakeControllerProvider(
         [
             device("Zero Delay Encoder", "USBROOT(0)#USB(1)", 0),
@@ -54,8 +55,7 @@ def test_assign_uses_usb_location_path_not_device_name(retrobat_root: Path, tmp_
     assert response.status_code == 200
     assert config.controller_ports["player1"].usb_location_path == "USBROOT(0)#USB(2)"
     saved = config.config_path.read_text(encoding="utf-8")
-    assert "[controller_ports.player1]" in saved
-    assert 'usb_location_path = "USBROOT(0)#USB(2)"' in saved
+    assert 'usb_location_path = "USBROOT(0)#USB(2)"' not in saved
 
 
 def test_verify_duplicate_same_index_reports_error(retrobat_root: Path) -> None:

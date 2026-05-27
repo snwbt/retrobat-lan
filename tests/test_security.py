@@ -4,19 +4,33 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.controls import ControllerDeviceProvider
 from app.main import create_app
 from tests.conftest import make_config
 
 
+class EmptyControllerProvider(ControllerDeviceProvider):
+    def list_devices(self):
+        return []
+
+
 def test_public_endpoints_do_not_return_api_token(retrobat_root: Path) -> None:
     config = make_config(retrobat_root, token="super-secret-token")
-    client = TestClient(create_app(config))
+    client = TestClient(create_app(config, controls_provider=EmptyControllerProvider()))
 
     status_body = client.get("/status").text
     public_body = client.get("/config/public").text
+    now_playing_body = client.get("/now-playing").text
+    health_body = client.get("/health").text
+    marquee_body = client.get("/marquee/state").text
+    setup_config_body = client.get("/setup/config/current", headers={"X-Arcade-Token": "super-secret-token"}).text
 
     assert "super-secret-token" not in status_body
     assert "super-secret-token" not in public_body
+    assert "super-secret-token" not in now_playing_body
+    assert "super-secret-token" not in health_body
+    assert "super-secret-token" not in marquee_body
+    assert "super-secret-token" not in setup_config_body
 
 
 def test_status_reports_resolved_retrobat_root_metadata(retrobat_root: Path) -> None:

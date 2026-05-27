@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RetroBat Cab Commander Kiosk</title>
+    <link rel="stylesheet" href="/kiosk.css" />
+  </head>
+  <body>
+    <main class="kiosk-shell">
+      <header class="status-band">
+        <section>
+          <span class="eyebrow">Cabinet</span>
+          <strong id="cabinet-status">Loading RetroBat status...</strong>
+        </section>
+        <section>
+          <span class="eyebrow">Now playing</span>
+          <strong id="now-playing-summary">Checking...</strong>
+        </section>
+        <section>
+          <span class="eyebrow">Token</span>
+          <strong id="token-summary">Not set</strong>
+        </section>
+      </header>
+
+      <section id="message" class="message" aria-live="polite"></section>
+
+      <section id="view-home" class="view active-view">
+        <div class="hero">
+          <h1>RetroBat Cab Commander</h1>
+          <p>Use arrows, Enter, and Escape. Gamepad A/B and D-pad work when your browser supports them.</p>
+        </div>
+        <div class="tile-grid">
+          <button class="tile" data-focusable data-action="open-search">Search games</button>
+          <button class="tile" data-focusable data-action="open-systems">Systems</button>
+          <button class="tile" data-focusable data-action="random-game">Random game</button>
+          <button class="tile" data-focusable data-action="open-now-playing">Now playing</button>
+          <button class="tile" data-focusable data-action="open-controls">Controls status</button>
+          <button class="tile danger" data-focusable data-action="open-power">Power menu</button>
+        </div>
+        <div class="token-entry">
+          <label>
+            Arcade token
+            <input id="token-input" data-focusable type="password" autocomplete="off" />
+          </label>
+          <button data-focusable data-action="save-token">Use token for this session</button>
+        </div>
+      </section>
+
+      <section id="view-search" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2>Search games</h2>
+        </div>
+        <form id="search-form" class="search-row">
+          <input id="search-input" data-focusable type="search" placeholder="Type a game name" />
+          <button data-focusable type="submit">Search</button>
+        </form>
+        <div id="search-results" class="result-grid"></div>
+      </section>
+
+      <section id="view-systems" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2>Systems</h2>
+        </div>
+        <div id="systems-list" class="result-grid"></div>
+      </section>
+
+      <section id="view-games" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2 id="games-heading">Games</h2>
+        </div>
+        <div id="games-list" class="result-grid"></div>
+      </section>
+
+      <section id="view-now-playing" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2>Now playing</h2>
+        </div>
+        <article id="now-playing-detail" class="detail-panel"></article>
+        <div class="action-row">
+          <button data-focusable data-action="refresh-now-playing">Refresh</button>
+          <button data-focusable data-action="clear-now-playing">Clear now playing</button>
+        </div>
+      </section>
+
+      <section id="view-controls" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2>Controls status</h2>
+        </div>
+        <article id="controls-detail" class="detail-panel">Token required for controls status.</article>
+        <div class="action-row">
+          <button data-focusable data-action="refresh-controls">Refresh controls</button>
+        </div>
+      </section>
+
+      <section id="view-power" class="view">
+        <div class="view-title">
+          <button data-focusable data-action="back">Back</button>
+          <h2>Power menu</h2>
+        </div>
+        <article id="power-detail" class="detail-panel">Loading power status...</article>
+        <div class="tile-grid">
+          <button class="tile" data-focusable data-action="quit-current-game">Quit current game</button>
+          <button class="tile danger" data-focusable data-action="confirm-reboot">Safe reboot</button>
+          <button class="tile danger" data-focusable data-action="confirm-shutdown">Safe shutdown</button>
+        </div>
+      </section>
+
+      <section id="view-confirm" class="view">
+        <div class="confirm-panel">
+          <span class="eyebrow">Confirm action</span>
+          <h2 id="confirm-title">Confirm</h2>
+          <p id="confirm-body"></p>
+          <div class="action-row">
+            <button data-focusable data-action="confirm-cancel">Cancel</button>
+            <button class="danger" data-focusable data-action="confirm-accept">Confirm</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="/kiosk.js"></script>
+  </body>
+</html>

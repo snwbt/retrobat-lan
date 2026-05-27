@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +35,8 @@ class SystemInfo(BaseModel):
     fullname: Optional[str] = None
     platform: Optional[str] = None
     theme: Optional[str] = None
+    launch_mode: str = "retrobat"
+    launch_warning: Optional[str] = None
 
 
 class LaunchRequest(BaseModel):
@@ -48,6 +51,44 @@ class LaunchResult(BaseModel):
     strategy: str
     message: str
     game: Optional[Game] = None
+
+
+class PlaySession(BaseModel):
+    session_id: str
+    system: Optional[str] = None
+    game_title: Optional[str] = None
+    rom_path: Optional[str] = None
+    launcher_type: str
+    process_name: Optional[str] = None
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    status: str
+    source: str
+
+
+class DetectedProcess(BaseModel):
+    name: str
+    pid: int
+    exe: Optional[str] = None
+    started_at: Optional[datetime] = None
+
+
+class NowPlayingResponse(BaseModel):
+    active: bool
+    session: Optional[PlaySession] = None
+    detected_processes: list[DetectedProcess] = Field(default_factory=list)
+    confidence: str
+
+
+class MarqueeStateResponse(BaseModel):
+    enabled: bool
+    refresh_seconds: int
+    source: str
+    current_system: Optional[str] = None
+    current_game: Optional[str] = None
+    artwork_urls: dict[str, str] = Field(default_factory=dict)
+    selected_artwork_url: Optional[str] = None
+    fallback_text: str
 
 
 class RandomGameRequest(BaseModel):
@@ -95,11 +136,56 @@ class SetupStatusResponse(BaseModel):
     no_games_reason: Optional[str] = None
 
 
+class SetupControllerPortConfig(BaseModel):
+    label: str = ""
+    usb_location_path: str = ""
+
+
 class SetupConfigRequest(BaseModel):
     retrobat_root: Optional[str] = None
     auto_detect_retrobat: Optional[bool] = None
     bind_host: Optional[str] = None
     port: Optional[int] = None
+    controls_enabled: Optional[bool] = None
+    controls_auto_repair_on_launch: Optional[bool] = None
+    safe_power_wait_seconds: Optional[int] = None
+    allow_force_kill_emulators: Optional[bool] = None
+    controller_ports: Optional[dict[str, SetupControllerPortConfig]] = None
+
+
+class SetupConfigCurrentResponse(BaseModel):
+    retrobat_root: str = ""
+    auto_detect_retrobat: bool
+    bind_host: str
+    port: int
+    controls_enabled: bool
+    controls_auto_repair_on_launch: bool
+    safe_power_wait_seconds: int
+    allow_force_kill_emulators: bool
+    controller_ports: dict[str, SetupControllerPortConfig]
+    backup_available: bool = False
+    config_path: Optional[str] = None
+
+
+class SetupConfigValidationResponse(BaseModel):
+    ok: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    resolved_retrobat_root: str
+    retrobat_root_source: str
+    retrobat_root_valid: bool
+    retrobat_exe_exists: bool = False
+    roms_root_exists: bool = False
+    es_systems_cfg_path: Optional[str] = None
+    restart_required: bool = False
+
+
+class SetupConfigActionResponse(BaseModel):
+    message: str
+    setup: SetupStatusResponse
+    backup_available: bool = False
+    backup_path: Optional[str] = None
+    restart_required: bool = False
 
 
 class FolderCandidate(BaseModel):
@@ -216,6 +302,71 @@ class PowerResult(BaseModel):
     action: str
     dry_run: bool = False
     message: str
+
+
+class PowerProcess(BaseModel):
+    name: str
+    pid: int
+    exe: Optional[str] = None
+
+
+class PowerStatusResponse(BaseModel):
+    frontend_running: bool
+    emulator_running: bool
+    frontend_processes: list[PowerProcess] = Field(default_factory=list)
+    emulator_processes: list[PowerProcess] = Field(default_factory=list)
+    now_playing: NowPlayingResponse
+    safe_to_shutdown: bool
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PowerActionResponse(BaseModel):
+    accepted: bool
+    action: str
+    safe_to_shutdown: bool
+    message: str
+    warnings: list[str] = Field(default_factory=list)
+    closed_processes: list[PowerProcess] = Field(default_factory=list)
+    remaining_emulator_processes: list[PowerProcess] = Field(default_factory=list)
+    dry_run: bool = False
+
+
+HealthSeverity = Literal["ok", "warning", "error"]
+
+
+class HealthCheck(BaseModel):
+    key: str
+    label: str
+    severity: HealthSeverity
+    message: str
+
+
+class HealthResponse(BaseModel):
+    severity: HealthSeverity
+    version: str
+    configured_retrobat_root: Optional[str] = None
+    resolved_retrobat_root: str
+    retrobat_root_source: str
+    retrobat_root_valid: bool
+    retrobat_exe_exists: bool
+    roms_root_exists: bool
+    es_systems_cfg_path: Optional[str] = None
+    es_systems_cfg_exists: bool
+    indexed_system_count: int
+    indexed_game_count: int
+    last_scan_time: Optional[datetime] = None
+    frontend_running: bool
+    emulator_running: bool
+    process_detection_available: bool
+    disk_free_bytes: Optional[int] = None
+    disk_total_bytes: Optional[int] = None
+    startup_available: bool
+    startup_enabled: bool
+    controller_lock_available: bool
+    controller_lock_enabled: bool
+    controller_configured_players: int
+    controller_connected_players: int
+    checks: list[HealthCheck] = Field(default_factory=list)
 
 
 def display_name_for_path(path: Path) -> str:

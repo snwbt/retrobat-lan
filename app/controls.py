@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 
-from .config import AppConfig, ControllerPortConfig, config_to_writable_data, write_config_data
+from .config import AppConfig, ControllerPortConfig
 from .diagnostics import redact_text
 from .logging_config import get_logger
 from .models import (
@@ -197,8 +197,6 @@ class ControlsService:
             label=request.label or current.label or ("Player 1" if player == "player1" else "Player 2"),
             usb_location_path=request.usb_location_path,
         )
-        if self.config.config_path:
-            write_config_data(self.config.config_path, config_to_writable_data(self.config))
         return self.status()
 
     def verify(self) -> ControlsVerifyResponse:

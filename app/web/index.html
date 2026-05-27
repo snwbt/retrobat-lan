@@ -31,6 +31,41 @@
         <button id="reboot" class="danger">Reboot</button>
       </section>
 
+      <section class="now-playing">
+        <div>
+          <h2>Now playing</h2>
+          <div id="now-playing-status" class="row-meta">Checking current game...</div>
+        </div>
+        <button id="clear-now-playing" type="button">Clear</button>
+      </section>
+
+      <section class="setup">
+        <div class="section-header">
+          <h2>Marquee</h2>
+          <a class="button-link" href="/marquee" target="_blank" rel="noreferrer">Open marquee window</a>
+        </div>
+        <div id="marquee-status" class="row-meta">Loading marquee status...</div>
+      </section>
+
+      <section class="setup">
+        <div class="section-header">
+          <h2>Health</h2>
+          <button id="refresh-health" type="button">Refresh health</button>
+        </div>
+        <div id="health-summary" class="row-meta">Checking cabinet health...</div>
+        <div id="health-checks" class="health-checks"></div>
+      </section>
+
+      <section class="setup">
+        <h2>Power Status</h2>
+        <div id="power-status" class="row-meta">Loading power status...</div>
+        <div class="setup-actions">
+          <button id="quit-current-game" type="button">Quit Game</button>
+          <button id="shutdown-safe" class="danger" type="button">Safe Shutdown</button>
+          <button id="reboot-safe" class="danger" type="button">Safe Reboot</button>
+        </div>
+      </section>
+
       <section class="setup">
         <h2>Diagnostics</h2>
         <div id="version-status" class="row-meta">Loading version...</div>
@@ -38,6 +73,7 @@
         <div class="setup-actions">
           <button id="refresh-diagnostics" type="button">Refresh diagnostics</button>
           <button id="download-diagnostics" type="button">Download diagnostics bundle</button>
+          <button id="download-config-backup" type="button">Download config backup</button>
         </div>
         <pre id="diagnostics-logs" class="log-output"></pre>
       </section>
@@ -62,11 +98,29 @@
             <input id="setup-auto-detect" type="checkbox" />
             Auto-detect RetroBat
           </label>
+          <label class="checkbox">
+            <input id="setup-controls-enabled" type="checkbox" />
+            Controls lock enabled
+          </label>
+          <label class="checkbox">
+            <input id="setup-controls-auto-repair" type="checkbox" />
+            Repair controls before launch
+          </label>
+          <label>
+            Safe power wait
+            <input id="setup-safe-power-wait" type="number" min="0" max="120" />
+          </label>
+          <label class="checkbox">
+            <input id="setup-force-kill-emulators" type="checkbox" />
+            Allow force kill emulators
+          </label>
         </div>
         <div class="setup-actions">
           <button id="browse-folders" type="button">Browse folders</button>
           <button id="use-folder" type="button">Use this folder</button>
-          <button id="save-setup" type="button">Save setup</button>
+          <button id="validate-config" type="button">Validate configuration</button>
+          <button id="save-config" type="button">Save configuration</button>
+          <button id="revert-config" type="button">Revert changes</button>
           <button id="enable-startup" type="button">Start with Windows</button>
           <button id="disable-startup" type="button">Disable Start with Windows</button>
         </div>

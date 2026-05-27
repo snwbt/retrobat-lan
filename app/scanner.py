@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import random
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
 from .config import AppConfig
+from .launch_rules import WINDOWS_NATIVE_SYSTEMS, effective_launch_mode, launch_mode_warning
 from .logging_config import get_logger
 from .models import Game, SystemDefinition, SystemInfo, display_name_for_path
 
@@ -72,7 +74,6 @@ CONSERVATIVE_ROM_EXTENSIONS = {
     ".zip",
 }
 
-WINDOWS_NATIVE_SYSTEMS = {"windows", "steam", "epic", "gog", "amazon", "eagames"}
 WINDOWS_LAUNCH_EXTENSIONS = {
     ".exe",
     ".bat",
@@ -188,6 +189,7 @@ class GameIndex:
         self.es_systems_cfg_path: Optional[Path] = None
         self.systems: dict[str, SystemDefinition] = {}
         self.games: list[Game] = []
+        self.last_scan_time: Optional[datetime] = None
 
     def rescan(self) -> None:
         self.es_systems_cfg_path = resolve_es_systems_cfg(self.config)
@@ -200,6 +202,7 @@ class GameIndex:
         self.games = []
         for definition in definitions:
             self.games.extend(self._scan_system(definition))
+        self.last_scan_time = datetime.now(timezone.utc)
         logger.info("rescan_complete systems=%s games=%s", len(self.systems), len(self.games))
 
     def _folder_definitions(self) -> list[SystemDefinition]:
@@ -297,6 +300,8 @@ class GameIndex:
                     fullname=definition.fullname,
                     platform=definition.platform,
                     theme=definition.theme,
+                    launch_mode=effective_launch_mode(self.config, name),
+                    launch_warning=launch_mode_warning(self.config, name),
                 )
             )
         return result

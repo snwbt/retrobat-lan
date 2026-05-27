@@ -115,6 +115,160 @@ def test_setup_config_saves_only_allowed_fields(tmp_path: Path) -> None:
     assert "port = 9001" in saved
 
 
+def test_setup_config_save_creates_backup_before_writing(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms").mkdir(parents=True)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "secret"\nport = 8765\n', encoding="utf-8")
+    config = AppConfig(
+        retrobat_root=retrobat,
+        configured_retrobat_root=retrobat,
+        retrobat_root_valid=True,
+        retrobat_root_source="config",
+        api_token="secret",
+        config_path=config_path,
+        log_dir=tmp_path / "logs",
+    )
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.post(
+        "/setup/config/save",
+        headers={"X-Arcade-Token": "secret"},
+        json={"retrobat_root": str(retrobat), "auto_detect_retrobat": False, "port": 9002},
+    )
+
+    assert response.status_code == 200
+    backups = list(tmp_path.glob("config.toml.*.bak"))
+    assert len(backups) == 1
+    assert "port = 8765" in backups[0].read_text(encoding="utf-8")
+    assert "port = 9002" in config_path.read_text(encoding="utf-8")
+    assert response.json()["backup_available"] is True
+
+
+def test_setup_config_revert_restores_previous_backup(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms").mkdir(parents=True)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "secret"\nport = 8765\n', encoding="utf-8")
+    config = AppConfig(
+        retrobat_root=retrobat,
+        configured_retrobat_root=retrobat,
+        retrobat_root_valid=True,
+        retrobat_root_source="config",
+        api_token="secret",
+        config_path=config_path,
+        log_dir=tmp_path / "logs",
+    )
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    client.post(
+        "/setup/config/save",
+        headers={"X-Arcade-Token": "secret"},
+        json={"retrobat_root": str(retrobat), "auto_detect_retrobat": False, "port": 9003},
+    )
+    reverted = client.post("/setup/config/revert", headers={"X-Arcade-Token": "secret"})
+
+    assert reverted.status_code == 200
+    assert reverted.json()["message"] == "Previous configuration restored."
+    assert "port = 8765" in config_path.read_text(encoding="utf-8")
+    assert config.port == 8765
+
+
+def test_setup_config_revert_without_backup_fails(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "secret"\n', encoding="utf-8")
+    config = AppConfig(api_token="secret", config_path=config_path, log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.post("/setup/config/revert", headers={"X-Arcade-Token": "secret"})
+
+    assert response.status_code == 404
+    assert "No backup available" in response.text
+
+
+def test_setup_config_validate_does_not_write_config(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms").mkdir(parents=True)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "secret"\nport = 8765\n', encoding="utf-8")
+    before = config_path.read_text(encoding="utf-8")
+    config = AppConfig(api_token="secret", config_path=config_path, log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.post(
+        "/setup/config/validate",
+        headers={"X-Arcade-Token": "secret"},
+        json={"retrobat_root": str(retrobat), "auto_detect_retrobat": False, "port": 9004},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert config_path.read_text(encoding="utf-8") == before
+
+
+def test_setup_config_save_persists_controller_ports(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms").mkdir(parents=True)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "secret"\n', encoding="utf-8")
+    config = AppConfig(
+        retrobat_root=retrobat,
+        configured_retrobat_root=retrobat,
+        retrobat_root_valid=True,
+        retrobat_root_source="config",
+        api_token="secret",
+        config_path=config_path,
+        log_dir=tmp_path / "logs",
+    )
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.post(
+        "/setup/config/save",
+        headers={"X-Arcade-Token": "secret"},
+        json={
+            "retrobat_root": str(retrobat),
+            "auto_detect_retrobat": False,
+            "controller_ports": {
+                "player1": {"label": "Player 1", "usb_location_path": "USBROOT(0)#USB(1)"},
+                "player2": {"label": "Player 2", "usb_location_path": "USBROOT(0)#USB(2)"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    saved = config_path.read_text(encoding="utf-8")
+    assert 'usb_location_path = "USBROOT(0)#USB(1)"' in saved
+    assert config.controller_ports["player2"].usb_location_path == "USBROOT(0)#USB(2)"
+
+
+def test_config_backup_download_redacts_token(tmp_path: Path) -> None:
+    retrobat = tmp_path / "RetroBat"
+    (retrobat / "roms").mkdir(parents=True)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('api_token = "super-secret-token"\nport = 8765\n', encoding="utf-8")
+    config = AppConfig(
+        retrobat_root=retrobat,
+        configured_retrobat_root=retrobat,
+        retrobat_root_valid=True,
+        retrobat_root_source="config",
+        api_token="super-secret-token",
+        config_path=config_path,
+        log_dir=tmp_path / "logs",
+    )
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+    client.post(
+        "/setup/config/save",
+        headers={"X-Arcade-Token": "super-secret-token"},
+        json={"retrobat_root": str(retrobat), "auto_detect_retrobat": False, "port": 9005},
+    )
+
+    response = client.get("/diagnostics/config-backup", headers={"X-Arcade-Token": "super-secret-token"})
+
+    assert response.status_code == 200
+    assert "super-secret-token" not in response.text
+    assert "[REDACTED]" in response.text
+
+
 def test_setup_config_rescans_selected_retrobat_root(tmp_path: Path) -> None:
     retrobat = tmp_path / "RetroBat"
     (retrobat / "roms" / "arcade").mkdir(parents=True)
