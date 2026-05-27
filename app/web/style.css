@@ -1,0 +1,181 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #121417;
+  color: #f4f6f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #3d4652;
+  background: #222932;
+  color: #f4f6f8;
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #2d3743;
+}
+
+button.danger {
+  border-color: #87464c;
+  background: #432126;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #3d4652;
+  background: #171b20;
+  color: #f4f6f8;
+  padding: 0.65rem;
+  border-radius: 6px;
+}
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 320px);
+  gap: 1rem;
+  align-items: end;
+  padding: 1rem 0;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.8rem;
+}
+
+h2 {
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+#status {
+  margin-top: 0.4rem;
+  color: #aeb8c4;
+}
+
+.token {
+  display: grid;
+  gap: 0.35rem;
+  color: #aeb8c4;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, auto);
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+#search-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+}
+
+.setup {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid #2c333d;
+  border-bottom: 1px solid #2c333d;
+  padding: 1rem 0;
+  margin: 1rem 0;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) minmax(100px, 140px) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.setup-grid label {
+  display: grid;
+  gap: 0.35rem;
+  color: #aeb8c4;
+}
+
+.setup-grid .checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  color: #f4f6f8;
+}
+
+.setup-grid .checkbox input {
+  width: auto;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.row {
+  display: grid;
+  gap: 0.3rem;
+  border: 1px solid #2c333d;
+  background: #191e24;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.row button {
+  justify-self: start;
+}
+
+.row-title {
+  font-weight: 700;
+}
+
+.row-meta {
+  color: #aeb8c4;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .controls,
+  #search-form,
+  .setup-grid,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

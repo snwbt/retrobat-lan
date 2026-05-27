@@ -1,0 +1,22 @@
+# Copy this file to config.toml and edit for your cabinet.
+
+# Leave retrobat_root blank for automatic detection, or set it to force a path.
+auto_detect_retrobat = true
+retrobat_root = ""
+api_token = "change-this-token"
+bind_host = "127.0.0.1"
+port = 8765
+
+favorite_systems = ["arcade", "nes", "snes", "windows"]
+frontend_process_names = ["retrobat.exe", "emulationstation.exe"]
+emulator_process_names = ["retroarch.exe"]
+
+# Optional: override automatic discovery.
+# es_systems_cfg = "C:/RetroBat/emulationstation/.emulationstation/es_systems.cfg"
+
+allow_rom_symlinks = true
+experimental_direct_es_launch = false
+
+cors_enabled = false
+cors_origins = []
+log_dir = "logs"

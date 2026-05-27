@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RetroBat Cab Commander</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>RetroBat Cab Commander</h1>
+          <p id="status">Loading cabinet status...</p>
+        </div>
+        <label class="token">
+          Token
+          <input id="token" type="password" autocomplete="off" />
+        </label>
+      </header>
+
+      <section class="controls">
+        <form id="search-form">
+          <input id="search" type="search" placeholder="Search games" />
+          <button type="submit">Search</button>
+        </form>
+        <button id="random">Random game</button>
+        <button id="rescan">Rescan</button>
+        <button id="shutdown" class="danger">Shutdown</button>
+        <button id="reboot" class="danger">Reboot</button>
+      </section>
+
+      <section class="setup">
+        <h2>Setup</h2>
+        <div id="setup-status" class="row-meta">Setup status unavailable until token is set.</div>
+        <div class="setup-grid">
+          <label>
+            RetroBat folder
+            <input id="setup-retrobat-root" type="text" placeholder="Leave blank for auto-detect" />
+          </label>
+          <label>
+            Bind host
+            <input id="setup-bind-host" type="text" />
+          </label>
+          <label>
+            Port
+            <input id="setup-port" type="number" min="1" max="65535" />
+          </label>
+          <label class="checkbox">
+            <input id="setup-auto-detect" type="checkbox" />
+            Auto-detect RetroBat
+          </label>
+        </div>
+        <div class="setup-actions">
+          <button id="save-setup" type="button">Save setup</button>
+          <button id="enable-startup" type="button">Start with Windows</button>
+          <button id="disable-startup" type="button">Disable Start with Windows</button>
+        </div>
+      </section>
+
+      <section class="layout">
+        <aside>
+          <h2>Systems</h2>
+          <div id="systems" class="list"></div>
+        </aside>
+        <section>
+          <h2 id="games-title">Games</h2>
+          <div id="games" class="list games"></div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
