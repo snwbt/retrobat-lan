@@ -89,6 +89,10 @@ $out | ConvertTo-Json -Depth 4
                 text=True,
                 timeout=8,
             )
+        except subprocess.TimeoutExpired:
+            self.last_error = "Windows controller enumeration timed out."
+            logger.warning("controls_enumeration_timed_out")
+            return []
         except OSError as exc:
             self.last_error = f"Unable to start Windows controller enumeration: {exc}"
             logger.warning("controls_enumeration_start_failed error=%s", redact_text(str(exc)))
