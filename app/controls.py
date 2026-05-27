@@ -10,11 +10,13 @@ from pathlib import Path
 from fastapi import HTTPException, status
 
 from .config import AppConfig, ControllerPortConfig, config_to_writable_data, write_config_data
+from .diagnostics import redact_text
 from .logging_config import get_logger
 from .models import (
     ControllerDevice,
     ControllerPortAssignment,
     ControlsAssignRequest,
+    ControlsRepairRequest,
     ControlsRepairResponse,
     ControlsStatusResponse,
     ControlsVerifyResponse,
@@ -37,13 +39,17 @@ def parse_vid_pid(instance_id: str | None) -> tuple[str | None, str | None]:
 
 
 class ControllerDeviceProvider:
+    last_error: str | None = None
+
     def list_devices(self) -> list[ControllerDevice]:
         raise NotImplementedError
 
 
 class WindowsControllerDeviceProvider(ControllerDeviceProvider):
     def list_devices(self) -> list[ControllerDevice]:
+        self.last_error = None
         if os.name != "nt":
+            self.last_error = "Controller enumeration is only available on Windows."
             return []
         script = r"""
 $items = Get-CimInstance Win32_PnPEntity |
@@ -83,14 +89,19 @@ $out | ConvertTo-Json -Depth 4
                 text=True,
                 timeout=8,
             )
-        except OSError:
+        except OSError as exc:
+            self.last_error = f"Unable to start Windows controller enumeration: {exc}"
+            logger.warning("controls_enumeration_start_failed error=%s", redact_text(str(exc)))
             return []
         if result.returncode != 0 or not result.stdout.strip():
+            self.last_error = redact_text(result.stderr.strip() or "Windows controller enumeration returned no data.")
+            logger.warning("controls_enumeration_failed error=%s", self.last_error)
             return []
         try:
             raw = json.loads(result.stdout)
         except json.JSONDecodeError:
-            logger.warning("controls_enumeration_json_failed")
+            self.last_error = "Windows controller enumeration returned unreadable data."
+            logger.warning("controls_enumeration_json_failed output=%s", redact_text(result.stdout[:500]))
             return []
         items = raw if isinstance(raw, list) else [raw]
         devices: list[ControllerDevice] = []
@@ -111,6 +122,7 @@ $out | ConvertTo-Json -Depth 4
                     usb_location_path=location_path,
                     location_info=str(item.get("LocationInfo") or "") or None,
                     joystick_index=item.get("JoystickIndex", idx),
+                    joystick_index_source="estimated",
                 )
             )
         return devices
@@ -170,6 +182,7 @@ class ControlsService:
             retroarch_config_exists=self.retroarch_config_path.exists(),
             assignments=self._assignments(devices),
             devices=devices,
+            detection_error=getattr(self.provider, "last_error", None),
         )
 
     def assign(self, request: ControlsAssignRequest) -> ControlsStatusResponse:
@@ -191,6 +204,7 @@ class ControlsService:
     def verify(self) -> ControlsVerifyResponse:
         devices = self.devices()
         errors: list[str] = []
+        warnings: list[str] = []
         mappings: list[PlayerMapping] = []
         for player in ["player1", "player2"]:
             configured = self.config.controller_ports.get(player)
@@ -206,11 +220,14 @@ class ControlsService:
                     player=player,
                     usb_location_path=configured.usb_location_path,
                     joystick_index=device.joystick_index,
+                    joystick_index_source=device.joystick_index_source,
                     device_name=device.name,
                 )
             )
             if device.joystick_index is None:
                 errors.append(f"{configured.label or player} joystick index is unavailable")
+            elif device.joystick_index_source != "verified":
+                warnings.append(f"{configured.label or player} joystick index is estimated, not verified by RetroArch")
 
         player1 = next((mapping for mapping in mappings if mapping.player == "player1"), None)
         player2 = next((mapping for mapping in mappings if mapping.player == "player2"), None)
@@ -218,9 +235,10 @@ class ControlsService:
             errors.append("Player 1 encoder not detected on configured USB port")
         if player1 and player2 and player1.joystick_index is not None and player1.joystick_index == player2.joystick_index:
             errors.append("Both encoders are being reported as the same controller")
-        return ControlsVerifyResponse(ok=not errors, errors=errors, mappings=mappings)
+        return ControlsVerifyResponse(ok=not errors, errors=errors, warnings=warnings, mappings=mappings)
 
-    def repair_retroarch(self) -> ControlsRepairResponse:
+    def repair_retroarch(self, request: ControlsRepairRequest | None = None) -> ControlsRepairResponse:
+        force_estimated = request.force_estimated_indexes if request else False
         verify = self.verify()
         if not verify.ok:
             return ControlsRepairResponse(
@@ -228,6 +246,16 @@ class ControlsService:
                 verify=verify,
                 retroarch_config_path=str(self.retroarch_config_path),
             )
+        if not force_estimated:
+            estimated = [mapping for mapping in verify.mappings if mapping.joystick_index_source != "verified"]
+            if estimated:
+                verify.errors.append("Joystick indexes are estimated. Use manual repair override only after confirming order.")
+                verify.ok = False
+                return ControlsRepairResponse(
+                    repaired=False,
+                    verify=verify,
+                    retroarch_config_path=str(self.retroarch_config_path),
+                )
         player1 = next((mapping for mapping in verify.mappings if mapping.player == "player1"), None)
         player2 = next((mapping for mapping in verify.mappings if mapping.player == "player2"), None)
         if not player1 or player1.joystick_index is None:
@@ -283,4 +311,3 @@ class ControlsService:
     @staticmethod
     def _device_for_path(devices: list[ControllerDevice], location_path: str) -> ControllerDevice | None:
         return next((device for device in devices if device.usb_location_path == location_path), None)
-

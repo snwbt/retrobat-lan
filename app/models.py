@@ -117,11 +117,36 @@ class FolderBrowserResponse(BaseModel):
     drives: list[FolderCandidate] = Field(default_factory=list)
     directories: list[FolderCandidate] = Field(default_factory=list)
     error: Optional[str] = None
+    truncated: bool = False
 
 
 class StartupResult(BaseModel):
     enabled: bool
     message: str
+
+
+class VersionResponse(BaseModel):
+    name: str
+    version: str
+
+
+class DiagnosticsLogsResponse(BaseModel):
+    log_path: str
+    lines: list[str] = Field(default_factory=list)
+
+
+class DiagnosticsStatusResponse(BaseModel):
+    version: str
+    config_path: Optional[str] = None
+    log_path: str
+    retrobat_root_valid: bool
+    resolved_retrobat_root: str
+    es_systems_cfg_path: Optional[str] = None
+    indexed_system_count: int
+    indexed_game_count: int
+    controls_enabled: bool
+    controls_detection_error: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ControllerDevice(BaseModel):
@@ -134,6 +159,7 @@ class ControllerDevice(BaseModel):
     usb_location_path: str
     location_info: Optional[str] = None
     joystick_index: Optional[int] = None
+    joystick_index_source: str = "unavailable"
 
 
 class ControllerPortAssignment(BaseModel):
@@ -150,6 +176,7 @@ class ControlsStatusResponse(BaseModel):
     retroarch_config_exists: bool
     assignments: list[ControllerPortAssignment]
     devices: list[ControllerDevice]
+    detection_error: Optional[str] = None
 
 
 class ControlsAssignRequest(BaseModel):
@@ -162,13 +189,19 @@ class PlayerMapping(BaseModel):
     player: str
     usb_location_path: str
     joystick_index: Optional[int] = None
+    joystick_index_source: str = "unavailable"
     device_name: Optional[str] = None
 
 
 class ControlsVerifyResponse(BaseModel):
     ok: bool
     errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     mappings: list[PlayerMapping] = Field(default_factory=list)
+
+
+class ControlsRepairRequest(BaseModel):
+    force_estimated_indexes: bool = False
 
 
 class ControlsRepairResponse(BaseModel):

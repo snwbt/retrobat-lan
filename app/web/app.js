@@ -14,6 +14,9 @@ const controlsStatusEl = document.querySelector("#controls-status");
 const controlDevicesEl = document.querySelector("#control-devices");
 const tokenStatusEl = document.querySelector("#token-status");
 const folderBrowserEl = document.querySelector("#folder-browser");
+const versionStatusEl = document.querySelector("#version-status");
+const diagnosticsStatusEl = document.querySelector("#diagnostics-status");
+const diagnosticsLogsEl = document.querySelector("#diagnostics-logs");
 let currentBrowsePath = "";
 
 const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -39,6 +42,9 @@ function updateTokenStatus() {
   controlsStatusEl.textContent = tokenInput.value
     ? controlsStatusEl.textContent
     : "Token required for controls setup.";
+  diagnosticsStatusEl.textContent = tokenInput.value
+    ? diagnosticsStatusEl.textContent
+    : "Token required for diagnostics.";
 }
 
 function headers() {
@@ -93,6 +99,29 @@ async function loadStatus() {
     ? `RetroBat found: ${status.resolved_retrobat_root}`
     : "RetroBat not found: edit config.toml";
   statusEl.textContent = `${retrobat} - ${status.indexed_game_count} games indexed - source ${status.retrobat_root_source} - frontend ${status.frontend_running ? "running" : "stopped"}`;
+}
+
+async function loadVersion() {
+  const version = await api("/version");
+  versionStatusEl.textContent = `${version.name} ${version.version}`;
+}
+
+async function loadDiagnostics() {
+  if (!tokenInput.value) {
+    updateTokenStatus();
+    return;
+  }
+  const diagnostics = await api("/diagnostics/status", { headers: headers() });
+  diagnosticsStatusEl.textContent = [
+    `Version ${diagnostics.version}`,
+    `RetroBat ${diagnostics.retrobat_root_valid ? "valid" : "invalid"}`,
+    `systems ${diagnostics.indexed_system_count}`,
+    `games ${diagnostics.indexed_game_count}`,
+    diagnostics.controls_detection_error ? `controls: ${diagnostics.controls_detection_error}` : "controls: ok",
+    diagnostics.warnings.length ? `warnings: ${diagnostics.warnings.join(" | ")}` : "",
+  ].filter(Boolean).join(" - ");
+  const logs = await api("/diagnostics/logs?lines=80", { headers: headers() });
+  diagnosticsLogsEl.textContent = logs.lines.join("\n");
 }
 
 async function loadSetupStatus() {
@@ -155,6 +184,12 @@ async function loadFolderBrowser(path = "") {
     error.className = "row";
     error.textContent = data.error;
     folderBrowserEl.appendChild(error);
+  }
+  if (data.truncated && !data.error) {
+    const truncated = document.createElement("div");
+    truncated.className = "row";
+    truncated.textContent = "Folder list was capped. Type a more specific path if needed.";
+    folderBrowserEl.appendChild(truncated);
   }
   const entries = [];
   if (data.parent_path) entries.push({ name: "..", path: data.parent_path, meta: "Parent folder" });
@@ -321,12 +356,44 @@ document.querySelector("#verify-controls").addEventListener("click", async () =>
 });
 
 document.querySelector("#repair-controls").addEventListener("click", async () => {
-  const result = await api("/controls/repair-retroarch", { method: "POST", headers: headers() });
+  let result = await api("/controls/repair-retroarch", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ force_estimated_indexes: false }),
+  });
+  if (!result.repaired && result.verify.errors.some((error) => error.includes("estimated"))) {
+    if (confirm(`${result.verify.errors.join("\n")}\n\nRepair anyway using estimated indexes?`)) {
+      result = await api("/controls/repair-retroarch", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ force_estimated_indexes: true }),
+      });
+    }
+  }
   await loadControlsStatus();
   alert(result.repaired ? "RetroArch player mapping repaired." : result.verify.errors.join("\n"));
 });
 
+document.querySelector("#refresh-diagnostics").addEventListener("click", async () => {
+  await loadDiagnostics();
+});
+
+document.querySelector("#download-diagnostics").addEventListener("click", async () => {
+  const text = await fetch("/diagnostics/bundle", { headers: headers() }).then(async (response) => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    return response.text();
+  });
+  const blob = new Blob([text], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "retrobat-cab-commander-diagnostics.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+loadVersion().catch((error) => (versionStatusEl.textContent = error.message));
 loadStatus().catch((error) => (statusEl.textContent = error.message));
 loadSystems().catch((error) => (systemsEl.innerHTML = `<div class="row"><span class="row-meta">${error.message}</span></div>`));
 loadSetupStatus().catch((error) => (setupStatusEl.textContent = error.message));
 loadControlsStatus().catch((error) => (controlsStatusEl.textContent = error.message));
+loadDiagnostics().catch((error) => (diagnosticsStatusEl.textContent = error.message));

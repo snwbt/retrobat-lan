@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.config import DEFAULT_API_TOKEN, AppConfig, ensure_config_file, load_config
+from app.bootstrap import BootstrapTokenStore
 from app.main import create_app
 from app.startup import StartupManager
 
@@ -54,14 +55,30 @@ def test_bootstrap_page_can_store_token_without_public_leak(tmp_path: Path) -> N
     config_path = tmp_path / "config.toml"
     _, token, _ = ensure_config_file(config_path)
     config = load_config(config_path)
-    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+    bootstrap_store = BootstrapTokenStore()
+    code = bootstrap_store.issue(token)
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager(), bootstrap_store=bootstrap_store))
 
-    bootstrap = client.get(f"/setup/bootstrap?token={token}")
+    bootstrap = client.get(f"/setup/bootstrap?code={code}")
 
     assert bootstrap.status_code == 200
     assert "localStorage.setItem" in bootstrap.text
+    assert token in bootstrap.text
+    assert code not in bootstrap.text
     assert token not in client.get("/status").text
     assert token not in client.get("/config/public").text
+
+
+def test_bootstrap_code_reuse_fails(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _, token, _ = ensure_config_file(config_path)
+    config = load_config(config_path)
+    bootstrap_store = BootstrapTokenStore()
+    code = bootstrap_store.issue(token)
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager(), bootstrap_store=bootstrap_store))
+
+    assert client.get(f"/setup/bootstrap?code={code}").status_code == 200
+    assert client.get(f"/setup/bootstrap?code={code}").status_code == 404
 
 
 def test_setup_config_saves_only_allowed_fields(tmp_path: Path) -> None:
@@ -144,6 +161,21 @@ def test_folder_browser_handles_missing_path(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["directories"] == []
     assert response.json()["error"]
+
+
+def test_folder_browser_caps_large_directory_listing(tmp_path: Path) -> None:
+    root = tmp_path / "many"
+    root.mkdir()
+    for index in range(210):
+        (root / f"folder-{index:03d}").mkdir()
+    config = AppConfig(api_token="secret", config_path=tmp_path / "config.toml", log_dir=tmp_path / "logs")
+    client = TestClient(create_app(config, startup_manager=FakeStartupManager()))
+
+    response = client.get("/setup/folders", headers={"X-Arcade-Token": "secret"}, params={"path": str(root)})
+
+    assert response.status_code == 200
+    assert len(response.json()["directories"]) == 200
+    assert response.json()["truncated"] is True
 
 
 def test_setup_config_rejects_invalid_path_when_auto_detect_disabled(tmp_path: Path) -> None:

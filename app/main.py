@@ -4,22 +4,27 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import token_dependency
+from .bootstrap import BootstrapTokenStore
 from .config import AppConfig, load_config
 from .config import config_to_writable_data, is_valid_retrobat_root, resolve_retrobat_root, write_config_data
 from .controls import ControllerDeviceProvider, ControlsService
+from .diagnostics import diagnostics_bundle, log_path, tail_log
 from .launcher import Launcher, process_running
 from .logging_config import configure_logging, get_logger
 from .models import (
     Game,
     ControllerDevice,
     ControlsAssignRequest,
+    ControlsRepairRequest,
     ControlsRepairResponse,
     ControlsStatusResponse,
     ControlsVerifyResponse,
+    DiagnosticsLogsResponse,
+    DiagnosticsStatusResponse,
     FolderBrowserResponse,
     FolderCandidate,
     LaunchRequest,
@@ -32,12 +37,14 @@ from .models import (
     StatusResponse,
     StartupResult,
     SystemInfo,
+    VersionResponse,
 )
 from .scanner import GameIndex
 from .setup_browser import browse_folders, folder_indicators
 from .startup import StartupManager, WindowsRegistryStartupManager
 from .system_control import reboot as request_reboot
 from .system_control import shutdown as request_shutdown
+from .version import APP_VERSION, BUILD_NAME
 
 logger = get_logger("main")
 
@@ -74,6 +81,7 @@ def create_app(
     config: AppConfig | None = None,
     startup_manager: StartupManager | None = None,
     controls_provider: ControllerDeviceProvider | None = None,
+    bootstrap_store: BootstrapTokenStore | None = None,
 ) -> FastAPI:
     app_config = config or load_config()
     configure_logging(app_config.log_dir)
@@ -82,8 +90,9 @@ def create_app(
     launcher = Launcher(app_config, index)
     startup = startup_manager or WindowsRegistryStartupManager()
     controls = ControlsService(app_config, controls_provider)
+    bootstrap = bootstrap_store or BootstrapTokenStore()
 
-    app = FastAPI(title="RetroBat Cab Commander", version="0.1.1")
+    app = FastAPI(title="RetroBat Cab Commander", version=APP_VERSION)
 
     if app_config.cors_enabled:
         app.add_middleware(
@@ -96,8 +105,18 @@ def create_app(
 
     require_token = token_dependency(app_config)
 
+    @app.middleware("http")
+    async def no_cache_dashboard_assets(request, call_next):
+        response = await call_next(request)
+        if request.url.path in {"/", "/index.html", "/app.js", "/style.css"}:
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+        return response
+
     @app.get("/setup/bootstrap", response_class=HTMLResponse)
-    def setup_bootstrap_endpoint(token: str) -> str:
+    def setup_bootstrap_endpoint(code: str) -> str:
+        token = bootstrap.consume(code)
+        if token is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bootstrap code is invalid or expired.")
         escaped = token.replace("\\", "\\\\").replace("'", "\\'")
         return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>RetroBat Cab Commander</title></head>
@@ -108,6 +127,10 @@ window.location.replace('/');
 </script>
 Token saved. Redirecting to dashboard...
 </body></html>"""
+
+    @app.get("/version", response_model=VersionResponse)
+    def version_endpoint() -> VersionResponse:
+        return VersionResponse(name=BUILD_NAME, version=APP_VERSION)
 
     @app.get("/status", response_model=StatusResponse)
     def status_endpoint() -> StatusResponse:
@@ -180,13 +203,14 @@ Token saved. Redirecting to dashboard...
 
     @app.get("/setup/folders", response_model=FolderBrowserResponse, dependencies=[Depends(require_token)])
     def setup_folders_endpoint(path: str | None = None) -> FolderBrowserResponse:
-        current, parent, drives, directories, error = browse_folders(path)
+        current, parent, drives, directories, error, truncated = browse_folders(path)
         return FolderBrowserResponse(
             current_path=str(current) if current else None,
             parent_path=parent,
             drives=[_folder_candidate(drive) for drive in drives],
             directories=[_folder_candidate(directory) for directory in directories],
             error=error,
+            truncated=truncated,
         )
 
     @app.post("/setup/config", response_model=SetupStatusResponse, dependencies=[Depends(require_token)])
@@ -258,8 +282,51 @@ Token saved. Redirecting to dashboard...
         return controls.verify()
 
     @app.post("/controls/repair-retroarch", response_model=ControlsRepairResponse, dependencies=[Depends(require_token)])
-    def controls_repair_retroarch_endpoint() -> ControlsRepairResponse:
-        return controls.repair_retroarch()
+    def controls_repair_retroarch_endpoint(request: ControlsRepairRequest | None = None) -> ControlsRepairResponse:
+        return controls.repair_retroarch(request)
+
+    def diagnostics_status() -> DiagnosticsStatusResponse:
+        control_status = controls.status()
+        warnings = []
+        if control_status.detection_error:
+            warnings.append(control_status.detection_error)
+        if _no_games_reason(app_config, index):
+            warnings.append(_no_games_reason(app_config, index) or "")
+        return DiagnosticsStatusResponse(
+            version=APP_VERSION,
+            config_path=str(app_config.config_path) if app_config.config_path else None,
+            log_path=str(log_path(app_config)),
+            retrobat_root_valid=app_config.retrobat_root_valid,
+            resolved_retrobat_root=str(app_config.retrobat_root),
+            es_systems_cfg_path=str(index.es_systems_cfg_path) if index.es_systems_cfg_path else None,
+            indexed_system_count=len(index.systems),
+            indexed_game_count=len(index.games),
+            controls_enabled=app_config.controls_enabled,
+            controls_detection_error=control_status.detection_error,
+            warnings=warnings,
+        )
+
+    @app.get("/diagnostics/status", response_model=DiagnosticsStatusResponse, dependencies=[Depends(require_token)])
+    def diagnostics_status_endpoint() -> DiagnosticsStatusResponse:
+        return diagnostics_status()
+
+    @app.get("/diagnostics/logs", response_model=DiagnosticsLogsResponse, dependencies=[Depends(require_token)])
+    def diagnostics_logs_endpoint(lines: int = 200) -> DiagnosticsLogsResponse:
+        max_lines = max(1, min(lines, 1000))
+        return DiagnosticsLogsResponse(log_path=str(log_path(app_config)), lines=tail_log(app_config, max_lines=max_lines))
+
+    @app.get("/diagnostics/bundle", response_class=PlainTextResponse, dependencies=[Depends(require_token)])
+    def diagnostics_bundle_endpoint() -> str:
+        data = {
+            "version": version_endpoint().model_dump(),
+            "diagnostics": diagnostics_status().model_dump(),
+            "status": status_endpoint().model_dump(),
+            "setup": setup_status_endpoint().model_dump(),
+            "systems": [system.model_dump() for system in index.systems_info()],
+            "controls": controls.status().model_dump(),
+            "logs": tail_log(app_config, max_lines=500),
+        }
+        return diagnostics_bundle(data)
 
     @app.post("/launch", response_model=LaunchResult, dependencies=[Depends(require_token)])
     def launch_endpoint(request: LaunchRequest) -> LaunchResult:

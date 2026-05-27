@@ -32,6 +32,17 @@
       </section>
 
       <section class="setup">
+        <h2>Diagnostics</h2>
+        <div id="version-status" class="row-meta">Loading version...</div>
+        <div id="diagnostics-status" class="row-meta">Diagnostics unavailable until token is set.</div>
+        <div class="setup-actions">
+          <button id="refresh-diagnostics" type="button">Refresh diagnostics</button>
+          <button id="download-diagnostics" type="button">Download diagnostics bundle</button>
+        </div>
+        <pre id="diagnostics-logs" class="log-output"></pre>
+      </section>
+
+      <section class="setup">
         <h2>Setup</h2>
         <div id="setup-status" class="row-meta">Setup status unavailable until token is set.</div>
         <div class="setup-grid">

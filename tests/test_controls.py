@@ -19,7 +19,7 @@ class FakeControllerProvider(ControllerDeviceProvider):
         return self._devices
 
 
-def device(name: str, path: str, index: int | None) -> ControllerDevice:
+def device(name: str, path: str, index: int | None, source: str = "verified") -> ControllerDevice:
     return ControllerDevice(
         id=f"{name}-{path}",
         name=name,
@@ -30,6 +30,7 @@ def device(name: str, path: str, index: int | None) -> ControllerDevice:
         usb_location_path=path,
         location_info=path,
         joystick_index=index,
+        joystick_index_source=source,
     )
 
 
@@ -120,6 +121,29 @@ def test_repair_retroarch_writes_mapping(retrobat_root: Path) -> None:
     assert retroarch.with_name("retroarch.cfg.retrobat-cab-commander.bak").exists()
 
 
+def test_repair_retroarch_blocks_estimated_indexes_by_default(retrobat_root: Path) -> None:
+    config = make_config(retrobat_root)
+    config.controller_ports["player1"] = ControllerPortConfig(label="Player 1", usb_location_path="USBROOT(0)#USB(1)")
+    provider = FakeControllerProvider([device("Zero Delay Encoder", "USBROOT(0)#USB(1)", 0, source="estimated")])
+    client = TestClient(create_app(config, controls_provider=provider))
+
+    blocked = client.post(
+        "/controls/repair-retroarch",
+        headers={"X-Arcade-Token": "secret"},
+        json={"force_estimated_indexes": False},
+    )
+    forced = client.post(
+        "/controls/repair-retroarch",
+        headers={"X-Arcade-Token": "secret"},
+        json={"force_estimated_indexes": True},
+    )
+
+    assert blocked.status_code == 200
+    assert blocked.json()["repaired"] is False
+    assert "estimated" in blocked.text
+    assert forced.json()["repaired"] is True
+
+
 def test_launch_blocks_when_player1_missing(retrobat_root: Path) -> None:
     windows = retrobat_root / "roms" / "windows"
     windows.mkdir(parents=True)
@@ -138,4 +162,3 @@ def test_launch_blocks_when_player1_missing(retrobat_root: Path) -> None:
 
     assert response.status_code == 409
     assert "Player 1 encoder not detected" in response.text
-

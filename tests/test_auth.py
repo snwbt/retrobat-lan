@@ -13,6 +13,7 @@ def test_get_endpoints_do_not_require_token(retrobat_root: Path) -> None:
 
     assert client.get("/status").status_code == 200
     assert client.get("/config/public").status_code == 200
+    assert client.get("/version").status_code == 200
     assert client.get("/systems").status_code == 200
     assert client.get("/search?q=mario").status_code == 200
 
@@ -51,6 +52,9 @@ def test_controls_get_endpoints_require_token(retrobat_root: Path) -> None:
 
     assert client.get("/controls/status").status_code == 401
     assert client.get("/controls/devices").status_code == 401
+    assert client.get("/diagnostics/status").status_code == 401
+    assert client.get("/diagnostics/logs").status_code == 401
+    assert client.get("/diagnostics/bundle").status_code == 401
 
 
 def test_post_endpoint_accepts_valid_token(retrobat_root: Path) -> None:

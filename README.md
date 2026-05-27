@@ -18,7 +18,7 @@ The API never returns the configured token. Shutdown and reboot are POST-only an
 
 The easiest install is the portable exe release:
 
-1. Extract `RetroBatCabCommander-v0.1.1-win64.zip` to `C:\RetroBatCabCommander`.
+1. Extract `RetroBatCabCommander-v0.1.2-win64.zip` to `C:\RetroBatCabCommander`.
 2. Double-click `RetroBatCabCommander.exe`.
 3. The dashboard opens automatically and stores the generated token in the browser.
 4. If RetroBat is not detected, use `Browse folders` in the dashboard setup panel and choose the folder that contains `retrobat.exe` or `roms`.
@@ -200,7 +200,7 @@ The output is written to:
 
 ```text
 dist\RetroBatCabCommander
-dist\RetroBatCabCommander-v0.1.1-win64.zip
+dist\RetroBatCabCommander-v0.1.2-win64.zip
 ```
 
 ## Backlog
