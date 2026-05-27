@@ -10,6 +10,8 @@ const setupRetroBatRoot = document.querySelector("#setup-retrobat-root");
 const setupBindHost = document.querySelector("#setup-bind-host");
 const setupPort = document.querySelector("#setup-port");
 const setupAutoDetect = document.querySelector("#setup-auto-detect");
+const controlsStatusEl = document.querySelector("#controls-status");
+const controlDevicesEl = document.querySelector("#control-devices");
 
 const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 if (fragment.get("token")) {
@@ -74,6 +76,52 @@ async function loadSetupStatus() {
   setupBindHost.value = setup.bind_host;
   setupPort.value = setup.port;
   setupAutoDetect.checked = setup.auto_detect_retrobat;
+}
+
+async function loadControlsStatus() {
+  if (!tokenInput.value) return;
+  const controls = await api("/controls/status", { headers: headers() });
+  const assigned = controls.assignments
+    .filter((item) => item.usb_location_path)
+    .map((item) => `${item.label}: ${item.device ? "connected" : "missing"}`)
+    .join(" - ");
+  controlsStatusEl.textContent = `${controls.enabled ? "Enabled" : "Disabled"} - ${assigned || "No ports assigned"} - RetroArch config ${controls.retroarch_config_exists ? "found" : "not found yet"}`;
+  renderControlDevices(controls.devices);
+}
+
+function renderControlDevices(devices) {
+  controlDevicesEl.innerHTML = "";
+  if (!devices.length) {
+    controlDevicesEl.innerHTML = '<div class="row"><span class="row-meta">No controller devices detected.</span></div>';
+    return;
+  }
+  for (const device of devices) {
+    const row = document.createElement("article");
+    row.className = "row";
+    row.innerHTML = `
+      <span class="row-title"></span>
+      <span class="row-meta"></span>
+      <div class="setup-actions">
+        <button type="button" data-player="player1">Assign as Player 1</button>
+        <button type="button" data-player="player2">Assign as Player 2</button>
+      </div>
+    `;
+    row.querySelector(".row-title").textContent = `${device.name} ${device.joystick_index === null || device.joystick_index === undefined ? "" : `(index ${device.joystick_index})`}`;
+    row.querySelector(".row-meta").textContent = `${device.usb_location_path} - VID ${device.vendor_id || "?"} PID ${device.product_id || "?"}`;
+    for (const button of row.querySelectorAll("button")) {
+      button.addEventListener("click", () => assignControl(button.dataset.player, device.usb_location_path));
+    }
+    controlDevicesEl.appendChild(row);
+  }
+}
+
+async function assignControl(player, locationPath) {
+  await api("/controls/assign", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ player: player, usb_location_path: locationPath }),
+  });
+  await loadControlsStatus();
 }
 
 async function loadSystems() {
@@ -166,6 +214,22 @@ document.querySelector("#disable-startup").addEventListener("click", async () =>
   alert(result.message);
 });
 
+document.querySelector("#detect-controls").addEventListener("click", async () => {
+  await loadControlsStatus();
+});
+
+document.querySelector("#verify-controls").addEventListener("click", async () => {
+  const result = await api("/controls/verify", { method: "POST", headers: headers() });
+  alert(result.ok ? "Controller order verified." : result.errors.join("\n"));
+});
+
+document.querySelector("#repair-controls").addEventListener("click", async () => {
+  const result = await api("/controls/repair-retroarch", { method: "POST", headers: headers() });
+  await loadControlsStatus();
+  alert(result.repaired ? "RetroArch player mapping repaired." : result.verify.errors.join("\n"));
+});
+
 loadStatus().catch((error) => (statusEl.textContent = error.message));
 loadSystems().catch((error) => (systemsEl.textContent = error.message));
 loadSetupStatus().catch((error) => (setupStatusEl.textContent = error.message));
+loadControlsStatus().catch((error) => (controlsStatusEl.textContent = error.message));

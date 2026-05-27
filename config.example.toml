@@ -20,3 +20,14 @@ experimental_direct_es_launch = false
 cors_enabled = false
 cors_origins = []
 log_dir = "logs"
+
+controls_enabled = true
+controls_auto_repair_on_launch = true
+
+[controller_ports.player1]
+label = "Player 1"
+usb_location_path = ""
+
+[controller_ports.player2]
+label = "Player 2"
+usb_location_path = ""

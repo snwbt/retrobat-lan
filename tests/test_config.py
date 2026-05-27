@@ -42,6 +42,10 @@ emulator_process_names = ["retroarch.exe"]
 es_systems_cfg = "custom/es_systems.cfg"
 allow_rom_symlinks = false
 experimental_direct_es_launch = true
+
+[controller_ports.player1]
+label = "Left controls"
+usb_location_path = "USBROOT(0)#USB(1)"
 """,
         encoding="utf-8",
     )
@@ -60,6 +64,8 @@ experimental_direct_es_launch = true
     assert config.es_systems_cfg == tmp_path / "custom" / "es_systems.cfg"
     assert config.allow_rom_symlinks is False
     assert config.experimental_direct_es_launch is True
+    assert config.controller_ports["player1"].label == "Left controls"
+    assert config.controller_ports["player1"].usb_location_path == "USBROOT(0)#USB(1)"
 
 
 def test_configured_path_wins_over_auto_detection(tmp_path: Path) -> None:

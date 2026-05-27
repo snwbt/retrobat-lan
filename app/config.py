@@ -25,6 +25,11 @@ class RetroBatRootResolution(BaseModel):
     valid: bool = False
 
 
+class ControllerPortConfig(BaseModel):
+    label: str = ""
+    usb_location_path: str = ""
+
+
 class AppConfig(BaseModel):
     retrobat_root: Path = DEFAULT_RETROBAT_ROOT
     configured_retrobat_root: Optional[Path] = None
@@ -44,6 +49,14 @@ class AppConfig(BaseModel):
     cors_enabled: bool = False
     cors_origins: list[str] = Field(default_factory=list)
     log_dir: Path = Path("logs")
+    controls_enabled: bool = True
+    controls_auto_repair_on_launch: bool = True
+    controller_ports: dict[str, ControllerPortConfig] = Field(
+        default_factory=lambda: {
+            "player1": ControllerPortConfig(label="Player 1"),
+            "player2": ControllerPortConfig(label="Player 2"),
+        }
+    )
 
     @property
     def roms_root(self) -> Path:
@@ -213,6 +226,12 @@ def default_config_data(api_token: str | None = None) -> dict[str, Any]:
         "cors_enabled": False,
         "cors_origins": [],
         "log_dir": "logs",
+        "controls_enabled": True,
+        "controls_auto_repair_on_launch": True,
+        "controller_ports": {
+            "player1": {"label": "Player 1", "usb_location_path": ""},
+            "player2": {"label": "Player 2", "usb_location_path": ""},
+        },
     }
 
 
@@ -228,6 +247,8 @@ def _toml_value(value: Any) -> str:
         return str(value)
     if isinstance(value, Path):
         return _toml_quote(str(value).replace("\\", "/"))
+    if isinstance(value, dict):
+        return "{}"
     if isinstance(value, list):
         return "[" + ", ".join(_toml_value(item) for item in value) + "]"
     if value is None:
@@ -251,6 +272,8 @@ def write_config_data(path: Path, data: dict[str, Any]) -> None:
         "cors_enabled",
         "cors_origins",
         "log_dir",
+        "controls_enabled",
+        "controls_auto_repair_on_launch",
     ]
     lines = [
         "# RetroBat Cab Commander configuration",
@@ -260,6 +283,24 @@ def write_config_data(path: Path, data: dict[str, Any]) -> None:
     for key in ordered_keys:
         if key in data and data[key] is not None:
             lines.append(f"{key} = {_toml_value(data[key])}")
+    controller_ports = data.get("controller_ports")
+    if isinstance(controller_ports, dict):
+        for player in ["player1", "player2"]:
+            port = controller_ports.get(player)
+            if not port:
+                continue
+            if isinstance(port, ControllerPortConfig):
+                port_data = port.model_dump()
+            else:
+                port_data = dict(port)
+            lines.extend(
+                [
+                    "",
+                    f"[controller_ports.{player}]",
+                    f"label = {_toml_value(port_data.get('label', ''))}",
+                    f"usb_location_path = {_toml_value(port_data.get('usb_location_path', ''))}",
+                ]
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -324,4 +365,7 @@ def config_to_writable_data(config: AppConfig) -> dict[str, Any]:
         "cors_enabled": config.cors_enabled,
         "cors_origins": config.cors_origins,
         "log_dir": config.log_dir,
+        "controls_enabled": config.controls_enabled,
+        "controls_auto_repair_on_launch": config.controls_auto_repair_on_launch,
+        "controller_ports": config.controller_ports,
     }

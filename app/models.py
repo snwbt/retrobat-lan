@@ -101,6 +101,60 @@ class StartupResult(BaseModel):
     message: str
 
 
+class ControllerDevice(BaseModel):
+    id: str
+    name: str
+    vendor_id: Optional[str] = None
+    product_id: Optional[str] = None
+    instance_id: Optional[str] = None
+    container_id: Optional[str] = None
+    usb_location_path: str
+    location_info: Optional[str] = None
+    joystick_index: Optional[int] = None
+
+
+class ControllerPortAssignment(BaseModel):
+    player: str
+    label: str
+    usb_location_path: str = ""
+    device: Optional[ControllerDevice] = None
+
+
+class ControlsStatusResponse(BaseModel):
+    enabled: bool
+    auto_repair_on_launch: bool
+    retroarch_config_path: str
+    retroarch_config_exists: bool
+    assignments: list[ControllerPortAssignment]
+    devices: list[ControllerDevice]
+
+
+class ControlsAssignRequest(BaseModel):
+    player: str
+    usb_location_path: str
+    label: Optional[str] = None
+
+
+class PlayerMapping(BaseModel):
+    player: str
+    usb_location_path: str
+    joystick_index: Optional[int] = None
+    device_name: Optional[str] = None
+
+
+class ControlsVerifyResponse(BaseModel):
+    ok: bool
+    errors: list[str] = Field(default_factory=list)
+    mappings: list[PlayerMapping] = Field(default_factory=list)
+
+
+class ControlsRepairResponse(BaseModel):
+    repaired: bool
+    verify: ControlsVerifyResponse
+    retroarch_config_path: str
+    backup_path: Optional[str] = None
+
+
 class PowerResult(BaseModel):
     accepted: bool
     action: str

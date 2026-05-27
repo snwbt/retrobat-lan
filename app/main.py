@@ -9,10 +9,16 @@ from fastapi.staticfiles import StaticFiles
 from .auth import token_dependency
 from .config import AppConfig, load_config
 from .config import config_to_writable_data, is_valid_retrobat_root, resolve_retrobat_root, write_config_data
+from .controls import ControllerDeviceProvider, ControlsService
 from .launcher import Launcher, process_running
 from .logging_config import configure_logging, get_logger
 from .models import (
     Game,
+    ControllerDevice,
+    ControlsAssignRequest,
+    ControlsRepairResponse,
+    ControlsStatusResponse,
+    ControlsVerifyResponse,
     LaunchRequest,
     LaunchResult,
     PowerResult,
@@ -41,13 +47,18 @@ def _normalize_setup_path(value: str | None, base_dir: Path) -> Path | None:
     return path
 
 
-def create_app(config: AppConfig | None = None, startup_manager: StartupManager | None = None) -> FastAPI:
+def create_app(
+    config: AppConfig | None = None,
+    startup_manager: StartupManager | None = None,
+    controls_provider: ControllerDeviceProvider | None = None,
+) -> FastAPI:
     app_config = config or load_config()
     configure_logging(app_config.log_dir)
     index = GameIndex(app_config)
     index.rescan()
     launcher = Launcher(app_config, index)
     startup = startup_manager or WindowsRegistryStartupManager()
+    controls = ControlsService(app_config, controls_provider)
 
     app = FastAPI(title="RetroBat Cab Commander", version="0.1.0")
 
@@ -177,8 +188,29 @@ def create_app(config: AppConfig | None = None, startup_manager: StartupManager 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return StartupResult(enabled=startup.is_enabled(), message="Start with Windows disabled.")
 
+    @app.get("/controls/status", response_model=ControlsStatusResponse, dependencies=[Depends(require_token)])
+    def controls_status_endpoint() -> ControlsStatusResponse:
+        return controls.status()
+
+    @app.get("/controls/devices", response_model=list[ControllerDevice], dependencies=[Depends(require_token)])
+    def controls_devices_endpoint() -> list[ControllerDevice]:
+        return controls.devices()
+
+    @app.post("/controls/assign", response_model=ControlsStatusResponse, dependencies=[Depends(require_token)])
+    def controls_assign_endpoint(request: ControlsAssignRequest) -> ControlsStatusResponse:
+        return controls.assign(request)
+
+    @app.post("/controls/verify", response_model=ControlsVerifyResponse, dependencies=[Depends(require_token)])
+    def controls_verify_endpoint() -> ControlsVerifyResponse:
+        return controls.verify()
+
+    @app.post("/controls/repair-retroarch", response_model=ControlsRepairResponse, dependencies=[Depends(require_token)])
+    def controls_repair_retroarch_endpoint() -> ControlsRepairResponse:
+        return controls.repair_retroarch()
+
     @app.post("/launch", response_model=LaunchResult, dependencies=[Depends(require_token)])
     def launch_endpoint(request: LaunchRequest) -> LaunchResult:
+        controls.ensure_launch_ready()
         return launcher.launch(request)
 
     @app.post("/game/random", response_model=Game, dependencies=[Depends(require_token)])

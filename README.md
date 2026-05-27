@@ -135,6 +135,34 @@ Emulator systems use a placeholder `RetroBatLaunchStrategy`: it starts `retrobat
 
 `experimental_direct_es_launch` defaults to `false`; direct command-template launch is backlog work and must include command substitution tests before use.
 
+## USB Port Player Lock
+
+RetroBat Cab Commander can bind Player 1 and Player 2 to physical USB hub ports instead of relying only on controller name, VID, or PID. This is useful when two identical arcade encoder boards look the same to RetroBat or RetroArch.
+
+In the dashboard:
+
+1. Open `Controls`.
+2. Click `Detect connected controls`.
+3. Assign the left/P1 encoder USB port as Player 1.
+4. Assign the right/P2 encoder USB port as Player 2.
+5. Click `Verify player order`.
+6. Click `Repair RetroArch mapping`.
+
+The app writes only these RetroArch keys:
+
+```text
+input_player1_joypad_index
+input_player2_joypad_index
+```
+
+Before the first write, it creates:
+
+```text
+<RETROBAT_ROOT>\emulators\retroarch\retroarch.cfg.retrobat-cab-commander.bak
+```
+
+If the app cannot determine a joystick index, or Windows reports both encoders as the same controller, launch is blocked with a clear warning. A future driver-backed virtual controller mode may be needed for absolute enforcement if RetroArch still collapses identical boards.
+
 ## Startup At Login
 
 In the packaged exe, use the dashboard buttons:
